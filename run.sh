@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
 TASK=""
 
 while [ "$#" -gt 0 ]; do
@@ -22,10 +24,10 @@ fi
 
 case "$TASK" in
     download)
-        exec ./download.sh "$@"
+        exec "$SCRIPT_DIR/download.sh" "$@"
         ;;
     align)
-        exec ./align.sh "$@"
+        exec "$SCRIPT_DIR/align.sh" "$@"
         ;;
     *)
         echo "ERROR: unknown task: $TASK" >&2
