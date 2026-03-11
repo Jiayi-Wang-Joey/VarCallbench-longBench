@@ -1,0 +1,37 @@
+2026-03-11 14:39:28 [WARNING] [33m[1m[WARN][0m /home/jiayiwang/VarCallbench/benchmark.yaml:27 (stage 'rawdata', module 'H211_bulk_PB')
+Use dict format instead
+2026-03-11 14:39:28 [WARNING] [33m[1m[WARN][0m /home/jiayiwang/VarCallbench/benchmark.yaml:41 (stage 'align', module 'minimap2')
+Use dict format instead
+2026-03-11 14:39:28 [INFO] Assuming unrestricted shared filesystem usage.
+2026-03-11 14:39:28 [INFO] None
+2026-03-11 14:39:28 [INFO] host: imlsportmacquarie
+2026-03-11 14:39:28 [INFO] Building DAG of jobs...
+2026-03-11 14:39:28 [INFO] Using shell: /bin/bash
+2026-03-11 14:39:28 [INFO] Provided cores: 1 (use --cores to define parallelism)
+2026-03-11 14:39:28 [INFO] Rules claiming more threads will be scaled down.
+2026-03-11 14:39:28 [INFO] Job stats:
+job                               count
+------------------------------  -------
+aggregate_performance                 1
+align_minimap2_.4ce6e44a              1
+all                                   1
+rawdata_H211_bulk_PB_.87aba0ed        1
+total                                 4
+
+2026-03-11 14:39:28 [INFO] Select jobs to execute...
+2026-03-11 14:39:28 [INFO] Execute 1 jobs...
+2026-03-11 14:39:28 [INFO]  Rule: align_minimap2_.4ce6e44a, Jobid: 1
+2026-03-11 14:39:28 [INFO] Shell command: None
+2026-03-11 14:39:28 [INFO] Activating singularity image /home/jiayiwang/VarCallbench/envs/minimap2.sif
+2026-03-11 14:39:29 [INFO] Select jobs to execute...
+2026-03-11 14:39:36 [ERROR] RuleException:
+CalledProcessError in file "/home/jiayiwang/micromamba/envs/omnibenchmark/lib/python3.12/site-packages/omnibenchmark/workflow/snakemake/rules/rule_node.smk", line 120:
+Command ' singularity  exec --home '/home/jiayiwang/VarCallbench-longBench' --bind /home/jiayiwang/micromamba/envs/omnibenchmark/lib/python3.12/site-packages:/home/jiayiwang/micromamba/envs/omnibenchmark/lib/python3.12/site-packages,/home/jiayiwang/VarCallbench-longBench/.omnibenchmark/git:/home/jiayiwang/VarCallbench-longBench/.omnibenchmark/git --env PYTHONPATH=/home/jiayiwang/micromamba/envs/omnibenchmark/lib/python3.12/site-packages:$PYTHONPATH --bind '/home/jiayiwang/micromamba/envs/omnibenchmark/lib/python3.12/site-packages':'/mnt/snakemake_searchpaths/item_0'  --bind '/home/jiayiwang/micromamba/envs/omnibenchmark/lib/python3.12/site-packages/omnibenchmark/workflow/snakemake/rules':'/mnt/snakemake_searchpaths/item_1'  --bind '/home/jiayiwang/tmp':'/mnt/snakemake_searchpaths/item_2'  --bind '/home/jiayiwang/micromamba/envs/omnibenchmark/bin':'/mnt/snakemake_searchpaths/item_3'  --bind '/home/jiayiwang/micromamba/envs/omnibenchmark/lib/python3.12':'/mnt/snakemake_searchpaths/item_4'  --bind '/home/jiayiwang/micromamba/envs/omnibenchmark/lib/python3.12/lib-dynload':'/mnt/snakemake_searchpaths/item_5'  --bind '/home/jiayiwang/.local/lib/python3.12/site-packages':'/mnt/snakemake_searchpaths/item_6'  --bind '/home/jiayiwang/micromamba/envs/omnibenchmark/lib/python3.12/site-packages':'/mnt/snakemake_searchpaths/item_7' /home/jiayiwang/VarCallbench/envs/minimap2.sif bash -c 'set -euo pipefail;  python /home/jiayiwang/VarCallbench-longBench/.snakemake/scripts/tmptqbu9la_.run_module.py'' returned non-zero exit status 1.
+2026-03-11 14:39:36 [ERROR] Error in rule align_minimap2_.4ce6e44a, jobid: 1
+2026-03-11 14:39:36 [INFO] Shutting down, this might take some time.
+2026-03-11 14:39:36 [ERROR] Exiting because a job execution failed. Look below for error messages
+2026-03-11 14:39:36 [ERROR] Error in rule align_minimap2_.4ce6e44a, jobid: 1
+2026-03-11 14:39:36 [INFO] Complete log(s): /home/jiayiwang/VarCallbench-longBench/.snakemake/log/2026-03-11T143928.155399.snakemake.log
+2026-03-11 14:39:36 [ERROR] WorkflowError:
+At least one job did not complete successfully.
+2026-03-11 14:39:36 [ERROR] Benchmark run has failed.
