@@ -46,6 +46,9 @@ while [ "$#" -gt 0 ]; do
             NAME="$2"
             shift 2
             ;;
+        --task)
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1" >&2
             exit 2
@@ -53,7 +56,6 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-[ -n "$READS" ] || { echo "ERROR: missing reads input" >&2; exit 2; }
 [ -n "$REFERENCE" ] || { echo "ERROR: missing --reference_genome" >&2; exit 2; }
 [ -n "$JUNC_BED" ] || { echo "ERROR: missing --transcriptome_bed" >&2; exit 2; }
 [ -n "$MAP_THREADS" ] || { echo "ERROR: missing --align_map_bam_threads" >&2; exit 2; }
@@ -62,18 +64,23 @@ done
 [ -n "$OUTPUT_DIR" ] || { echo "ERROR: missing --output_dir" >&2; exit 2; }
 [ -n "$NAME" ] || { echo "ERROR: missing --name" >&2; exit 2; }
 
-case "$NAME" in
-    *IsoSeq*|*MasSeq*)
+# IMPORTANT: reads are not being passed right now
+# You either need an align-stage input in benchmark.yaml, or detect from output_dir if testing manually.
+[ -n "$READS" ] || { echo "ERROR: missing reads input (--rawdata.fastq)" >&2; exit 2; }
+
+BASENAME=$(basename "$READS")
+case "$BASENAME" in
+    *PB*)
         PRESET="-ax splice:hq -uf"
         ;;
     *dRNA*)
         PRESET="-ax splice -uf -k14"
         ;;
-    *cDNA*)
+    *ONT*)
         PRESET="-ax splice"
         ;;
     *)
-        echo "ERROR: Cannot determine minimap2 preset from dataset name: $NAME" >&2
+        echo "ERROR: Cannot determine minimap2 preset from reads filename: $BASENAME" >&2
         exit 2
         ;;
 esac
