@@ -3,4 +3,4 @@ description: Download H211 bulk PacBio FASTQ from S3
 version: "0.1"
 
 entrypoints:
-  default: download.sh
+  default: run.sh
