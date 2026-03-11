@@ -59,13 +59,13 @@ if [ -z "$READS" ] || [ -z "$REFERENCE_GENOME" ] || [ -z "$TRANSCRIPTOME_BED" ] 
 fi
 
 case "$NAME" in
-    *IsoSeq*|*MasSeq*)
+    *PB*)
         PRESET="-ax splice:hq -uf"
         ;;
     *dRNA*)
         PRESET="-ax splice -uf -k14"
         ;;
-    *cDNA*)
+    *ONT*)
         PRESET="-ax splice"
         ;;
     *)
