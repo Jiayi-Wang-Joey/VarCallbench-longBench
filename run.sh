@@ -1,14 +1,15 @@
 #!/bin/sh
 set -eu
 
-# detect stage from arguments
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
 for arg in "$@"; do
     case "$arg" in
         --s3_url)
-            exec ./download.sh "$@"
+            exec "$DIR/download.sh" "$@"
             ;;
         --reference_genome)
-            exec ./align.sh "$@"
+            exec "$DIR/align.sh" "$@"
             ;;
     esac
 done
