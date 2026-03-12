@@ -5,17 +5,19 @@ DATASET=""
 BAM=""
 REF=""
 THREADS=""
-OUTVCF=""
+OUTDIR=""
 
 echo "ARGS: $@" >&2
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --name) DATASET="$2"; shift 2 ;;
         --dataset_id) DATASET="$2"; shift 2 ;;
+        --align.bam) BAM="$2"; shift 2 ;;
         --bam) BAM="$2"; shift 2 ;;
         --reference_genome) REF="$2"; shift 2 ;;
         --threads) THREADS="$2"; shift 2 ;;
-        --output_vcf) OUTVCF="$2"; shift 2 ;;
+        --output_dir) OUTDIR="$2"; shift 2 ;;
         *) shift ;;
     esac
 done
@@ -35,8 +37,8 @@ if [ -z "$THREADS" ]; then
     exit 1
 fi
 
-if [ -z "$OUTVCF" ]; then
-    echo "ERROR: output_vcf was not provided" >&2
+if [ -z "$OUTDIR" ]; then
+    echo "ERROR: output_dir was not provided" >&2
     exit 1
 fi
 
@@ -50,7 +52,7 @@ echo "DATASET=$DATASET" >&2
 echo "BAM=$BAM" >&2
 echo "REF=$REF" >&2
 echo "THREADS=$THREADS" >&2
-echo "OUTVCF=$OUTVCF" >&2
+echo "OUTDIR=$OUTDIR" >&2
 
 dataset_lc=$(echo "$DATASET" | tr '[:upper:]' '[:lower:]')
 
@@ -68,7 +70,10 @@ fi
 echo "PLATFORM=$PLATFORM" >&2
 
 TOOL_IMAGE="/home/jiayiwang/tools/clair3-rna-latest.simg"
-OUTDIR=$(dirname "$OUTVCF")/clair3_tmp_${DATASET}
+TMPDIR="${OUTDIR}/clair3_tmp_${DATASET}"
+FINALVCF="${OUTDIR}/${DATASET}.vcf.gz"
+
+mkdir -p "$TMPDIR"
 mkdir -p "$OUTDIR"
 
 if [ ! -f "${BAM}.bai" ]; then
@@ -79,6 +84,7 @@ set -x
 singularity exec \
     -B "$(dirname "$BAM")":"$(dirname "$BAM")" \
     -B "$(dirname "$REF")":"$(dirname "$REF")" \
+    -B "$(dirname "$TMPDIR")":"$(dirname "$TMPDIR")" \
     -B "$(dirname "$OUTDIR")":"$(dirname "$OUTDIR")" \
     "$TOOL_IMAGE" \
     /bin/bash -c "
@@ -90,9 +96,9 @@ singularity exec \
             --platform '$PLATFORM' \
             --tag_variant_using_readiportal \
             --remove_intermediate_dir \
-            --output_dir '$OUTDIR' \
+            --output_dir '$TMPDIR' \
             --conda_prefix /opt/conda/envs/clair3_rna
     "
 set +x
 
-mv "$OUTDIR/output.vcf.gz" "$OUTVCF"
+mv "${TMPDIR}/output.vcf.gz" "$FINALVCF"
