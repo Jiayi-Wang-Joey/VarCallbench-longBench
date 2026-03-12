@@ -7,6 +7,8 @@ REF=""
 THREADS=""
 OUTVCF=""
 
+echo "ARGS: $@" >&2
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --dataset_id) DATASET="$2"; shift 2 ;;
@@ -17,6 +19,38 @@ while [ $# -gt 0 ]; do
         *) shift ;;
     esac
 done
+
+if [ -z "$BAM" ]; then
+    echo "ERROR: bam was not provided" >&2
+    exit 1
+fi
+
+if [ -z "$REF" ]; then
+    echo "ERROR: reference_genome was not provided" >&2
+    exit 1
+fi
+
+if [ -z "$THREADS" ]; then
+    echo "ERROR: threads was not provided" >&2
+    exit 1
+fi
+
+if [ -z "$OUTVCF" ]; then
+    echo "ERROR: output_vcf was not provided" >&2
+    exit 1
+fi
+
+if [ -z "$DATASET" ] || [ "$DATASET" = "{dataset}" ]; then
+    DATASET=$(basename "$BAM")
+    DATASET=${DATASET%.aligned.bam}
+    DATASET=${DATASET%.bam}
+fi
+
+echo "DATASET=$DATASET" >&2
+echo "BAM=$BAM" >&2
+echo "REF=$REF" >&2
+echo "THREADS=$THREADS" >&2
+echo "OUTVCF=$OUTVCF" >&2
 
 dataset_lc=$(echo "$DATASET" | tr '[:upper:]' '[:lower:]')
 
@@ -31,8 +65,7 @@ else
     exit 1
 fi
 
-echo "DATASET=$DATASET"
-echo "PLATFORM=$PLATFORM"
+echo "PLATFORM=$PLATFORM" >&2
 
 TOOL_IMAGE="/home/jiayiwang/tools/clair3-rna-latest.simg"
 OUTDIR=$(dirname "$OUTVCF")/clair3_tmp_${DATASET}
@@ -42,6 +75,7 @@ if [ ! -f "${BAM}.bai" ]; then
     samtools index "$BAM"
 fi
 
+set -x
 singularity exec \
     -B "$(dirname "$BAM")":"$(dirname "$BAM")" \
     -B "$(dirname "$REF")":"$(dirname "$REF")" \
@@ -59,5 +93,6 @@ singularity exec \
             --output_dir '$OUTDIR' \
             --conda_prefix /opt/conda/envs/clair3_rna
     "
+set +x
 
 mv "$OUTDIR/output.vcf.gz" "$OUTVCF"
