@@ -69,7 +69,6 @@ fi
 
 echo "PLATFORM=$PLATFORM" >&2
 
-TOOL_IMAGE="/home/jiayiwang/tools/clair3-rna-latest.simg"
 TMPDIR="${OUTDIR}/clair3_tmp_${DATASET}"
 FINALVCF="${OUTDIR}/${DATASET}.vcf.gz"
 
@@ -80,25 +79,25 @@ if [ ! -f "${BAM}.bai" ]; then
     samtools index "$BAM"
 fi
 
+source /opt/conda/etc/profile.d/conda.sh
+conda activate clair3_rna
+
+CLAIR3_BIN="$(command -v run_clair3_rna || true)"
+if [ -z "$CLAIR3_BIN" ]; then
+    echo "ERROR: run_clair3_rna not found in PATH" >&2
+    exit 1
+fi
+
 set -x
-singularity exec \
-    -B "$(dirname "$BAM")":"$(dirname "$BAM")" \
-    -B "$(dirname "$REF")":"$(dirname "$REF")" \
-    -B "$(dirname "$TMPDIR")":"$(dirname "$TMPDIR")" \
-    -B "$(dirname "$OUTDIR")":"$(dirname "$OUTDIR")" \
-    "$TOOL_IMAGE" \
-    /bin/bash -c "
-        source /opt/conda/bin/activate /opt/conda/envs/clair3_rna && \
-        /opt/bin/run_clair3_rna \
-            --bam_fn '$BAM' \
-            --ref_fn '$REF' \
-            --threads '$THREADS' \
-            --platform '$PLATFORM' \
-            --tag_variant_using_readiportal \
-            --remove_intermediate_dir \
-            --output_dir '$TMPDIR' \
-            --conda_prefix /opt/conda/envs/clair3_rna
-    "
+"$CLAIR3_BIN" \
+    --bam_fn "$BAM" \
+    --ref_fn "$REF" \
+    --threads "$THREADS" \
+    --platform "$PLATFORM" \
+    --tag_variant_using_readiportal \
+    --remove_intermediate_dir \
+    --output_dir "$TMPDIR" \
+    --conda_prefix /opt/conda/envs/clair3_rna
 set +x
 
 mv "${TMPDIR}/output.vcf.gz" "$FINALVCF"
