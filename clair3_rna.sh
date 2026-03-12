@@ -50,27 +50,17 @@ if [ ! -f "${BAM}.bai" ]; then
     samtools index "$BAM"
 fi
 
-TOOL_IMAGE="/home/jiayiwang/VarCallbench/envs/clair3-rna-latest.simg"
-
 set -x
-singularity exec \
-    -B "$(dirname "$BAM")":"$(dirname "$BAM")" \
-    -B "$(dirname "$REF")":"$(dirname "$REF")" \
-    -B "$TMPDIR":"$TMPDIR" \
-    -B "$OUTDIR":"$OUTDIR" \
-    "$TOOL_IMAGE" \
-    /bin/bash -c "
-        source /opt/conda/bin/activate /opt/conda/envs/clair3_rna && \
-        /opt/bin/run_clair3_rna \
-            --bam_fn '$BAM' \
-            --ref_fn '$REF' \
-            --threads '$THREADS' \
-            --platform '$PLATFORM' \
-            --tag_variant_using_readiportal \
-            --remove_intermediate_dir \
-            --output_dir '$TMPDIR' \
-            --conda_prefix /opt/conda/envs/clair3_rna
-    "
+source /opt/conda/bin/activate /opt/conda/envs/clair3_rna
+/opt/bin/run_clair3_rna \
+    --bam_fn "$BAM" \
+    --ref_fn "$REF" \
+    --threads "$THREADS" \
+    --platform "$PLATFORM" \
+    --tag_variant_using_readiportal \
+    --remove_intermediate_dir \
+    --output_dir "$TMPDIR" \
+    --conda_prefix /opt/conda/envs/clair3_rna
 set +x
 
 if [ ! -f "${TMPDIR}/output.vcf.gz" ]; then
