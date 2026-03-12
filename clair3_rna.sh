@@ -102,6 +102,7 @@ fi
 echo "CLAIR3_BIN=$CLAIR3_BIN" >&2
 
 set -x
+source /opt/conda/bin/activate /opt/conda/envs/clair3_rna && \
 "$CLAIR3_BIN" \
     --bam_fn "$BAM" \
     --ref_fn "$REF" \
@@ -109,7 +110,8 @@ set -x
     --platform "$PLATFORM" \
     --tag_variant_using_readiportal \
     --remove_intermediate_dir \
-    --output_dir "$TMPDIR"
+    --output_dir "$TMPDIR" \
+    --conda_prefix /opt/conda/envs/clair3_rna
 set +x
 
 if [ ! -f "${TMPDIR}/output.vcf.gz" ]; then
