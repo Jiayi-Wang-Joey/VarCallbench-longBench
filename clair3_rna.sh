@@ -50,7 +50,7 @@ if [ ! -f "${BAM}.bai" ]; then
     samtools index "$BAM"
 fi
 
-TOOL_IMAGE="/home/jiayiwang/tools/clair3-rna-latest.simg"
+TOOL_IMAGE="/home/jiayiwang/VarCallbench/envs/clair3-rna-latest.simg"
 
 set -x
 singularity exec \
