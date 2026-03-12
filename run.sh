@@ -16,7 +16,7 @@ done
 
 case "$TASK" in
     clair3_rna)
-        exec "$DIR/run_clair3_rna.sh" "$@"
+        exec "$DIR/clair3_rna.sh" "$@"
         ;;
     align)
         exec "$DIR/align.sh" "$@"
