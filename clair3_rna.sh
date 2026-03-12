@@ -79,14 +79,27 @@ if [ ! -f "${BAM}.bai" ]; then
     samtools index "$BAM"
 fi
 
-source /opt/conda/etc/profile.d/conda.sh
-conda activate clair3_rna
+CLAIR3_BIN=""
+for x in \
+    /opt/bin/run_clair3_rna \
+    /usr/local/bin/run_clair3_rna \
+    /usr/bin/run_clair3_rna \
+    "$(command -v run_clair3_rna 2>/dev/null || true)"
+do
+    if [ -n "$x" ] && [ -x "$x" ]; then
+        CLAIR3_BIN="$x"
+        break
+    fi
+done
 
-CLAIR3_BIN="$(command -v run_clair3_rna || true)"
 if [ -z "$CLAIR3_BIN" ]; then
-    echo "ERROR: run_clair3_rna not found in PATH" >&2
+    echo "ERROR: run_clair3_rna not found" >&2
+    echo "PATH=$PATH" >&2
+    find / -name run_clair3_rna 2>/dev/null | head -20 >&2 || true
     exit 1
 fi
+
+echo "CLAIR3_BIN=$CLAIR3_BIN" >&2
 
 set -x
 "$CLAIR3_BIN" \
@@ -96,8 +109,12 @@ set -x
     --platform "$PLATFORM" \
     --tag_variant_using_readiportal \
     --remove_intermediate_dir \
-    --output_dir "$TMPDIR" \
-    --conda_prefix /opt/conda/envs/clair3_rna
+    --output_dir "$TMPDIR"
 set +x
+
+if [ ! -f "${TMPDIR}/output.vcf.gz" ]; then
+    echo "ERROR: expected output not found: ${TMPDIR}/output.vcf.gz" >&2
+    exit 1
+fi
 
 mv "${TMPDIR}/output.vcf.gz" "$FINALVCF"
