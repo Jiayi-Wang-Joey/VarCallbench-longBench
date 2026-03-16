@@ -18,6 +18,9 @@ case "$TASK" in
     clair3_rna)
         exec "$DIR/clair3_rna.sh" "$@"
         ;;
+    deep_variant)
+        exec "$DIR/deep_variant.sh" "$@"
+        ;;
     align)
         exec "$DIR/align.sh" "$@"
         ;;
