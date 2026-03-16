@@ -41,7 +41,7 @@ echo "OUTDIR=$OUTDIR" >&2
 
 dataset_lc=$(echo "$DATASET" | tr '[:upper:]' '[:lower:]')
 
-if [[ "$dataset_lc" == *pb*]]; then
+if [[ "$dataset_lc" == *pb* ]]; then
     MODEL="MASSEQ"
     EXTRA_ARGS=()
 elif [[ "$dataset_lc" == *ont* ]]; then
@@ -51,6 +51,7 @@ else
     echo "ERROR: cannot infer DeepVariant model from dataset: $DATASET" >&2
     exit 1
 fi
+
 
 echo "MODEL=$MODEL" >&2
 
