@@ -51,7 +51,12 @@ if [ ! -f "${BAM}.bai" ]; then
 fi
 
 set -x
+unset PYTHONHOME
+unset PYTHONPATH
+unset GIT_PYTHON_GIT_EXECUTABLE
+
 source /opt/conda/bin/activate /opt/conda/envs/clair3_rna
+
 /opt/bin/run_clair3_rna \
     --bam_fn "$BAM" \
     --ref_fn "$REF" \
