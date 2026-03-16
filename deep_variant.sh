@@ -71,9 +71,13 @@ fi
 
 set -x
 
+set -x
+
 unset PYTHONHOME
 unset PYTHONPATH
 unset GIT_PYTHON_GIT_EXECUTABLE
+PATH=/opt/deepvariant/bin:/usr/bin:/bin
+export PATH
 
 if [ -n "$MAKE_EXAMPLES_ARG" ]; then
     /opt/deepvariant/bin/run_deepvariant \
@@ -93,7 +97,6 @@ else
         --num_shards "$THREADS" \
         --intermediate_results_dir "$TMPDIR"
 fi
-
 set +x
 
 if [ ! -f "$FINALVCF" ]; then
