@@ -21,6 +21,9 @@ case "$TASK" in
     deep_variant)
         exec "$DIR/deep_variant.sh" "$@"
         ;;
+    longcallR)
+        exec "$DIR/longcallR.sh" "$@"
+        ;;
     align)
         exec "$DIR/align.sh" "$@"
         ;;
