@@ -21,6 +21,8 @@ while [ $# -gt 0 ]; do
             THREADS="$2"; shift 2 ;;
         --output_dir)
             OUTDIR="$2"; shift 2 ;;
+        --task)
+            shift 2 ;;
         *)
             echo "Unknown arg: $1" >&2
             shift ;;
@@ -40,11 +42,11 @@ else
     exit 1
 fi
 
+mkdir -p "$OUTDIR"
+
 if [ ! -f "${BAM}.bai" ] || [ "$BAM" -nt "${BAM}.bai" ]; then
     samtools index "$BAM"
 fi
-
-mkdir -p "$OUTDIR"
 
 longcallR \
     --bam-path "$BAM" \
@@ -57,7 +59,10 @@ longcallR \
     --max-depth 1000000 \
     > "$OUTDIR/longcallR.log" 2>&1
 
-bgzip "$OUTDIR/output.vcf"
-mv "$OUTDIR/output.vcf.gz" "$OUTDIR/output.vcf.gz.tmp"
-mv "$OUTDIR/output.vcf.gz.tmp" "$OUTDIR/longcallR.vcf.gz"
-tabix -p vcf "$OUTDIR/longcallR.vcf.gz"
+bcftools sort \
+    -T "$OUTDIR/tmp.sort" \
+    -Oz \
+    -o "$OUTDIR/longcallR.vcf.gz" \
+    "$OUTDIR/output.vcf"
+
+tabix -f -p vcf "$OUTDIR/longcallR.vcf.gz"
