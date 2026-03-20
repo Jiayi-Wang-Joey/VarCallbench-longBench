@@ -44,6 +44,10 @@ fi
 
 mkdir -p "$OUTDIR"
 
+command -v samtools >/dev/null 2>&1 || { echo "samtools not found" >&2; exit 127; }
+command -v bcftools >/dev/null 2>&1 || { echo "bcftools not found" >&2; exit 127; }
+command -v tabix >/dev/null 2>&1 || { echo "tabix not found" >&2; exit 127; }
+
 if [ ! -f "${BAM}.bai" ] || [ "$BAM" -nt "${BAM}.bai" ]; then
     samtools index "$BAM"
 fi
@@ -59,10 +63,12 @@ longcallR \
     --max-depth 1000000 \
     > "$OUTDIR/longcallR.log" 2>&1
 
+test -s "$OUTDIR/output.vcf"
+
 bcftools sort \
     -T "$OUTDIR/tmp.sort" \
     -Oz \
-    -o "$OUTDIR/longcallR.vcf.gz" \
+    -o "$OUTDIR/${DATASET}.vcf.gz" \
     "$OUTDIR/output.vcf"
 
-tabix -f -p vcf "$OUTDIR/longcallR.vcf.gz"
+tabix -f -p vcf "$OUTDIR/${DATASET}.vcf.gz"
