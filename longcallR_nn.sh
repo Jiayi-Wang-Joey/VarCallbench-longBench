@@ -6,6 +6,7 @@ BAM=""
 REF=""
 THREADS=""
 OUTDIR=""
+TASK=""
 
 echo "ARGS: $@" >&2
 
@@ -18,6 +19,7 @@ while [ $# -gt 0 ]; do
         --reference_genome) REF="$2"; shift 2 ;;
         --threads) THREADS="$2"; shift 2 ;;
         --output_dir) OUTDIR="$2"; shift 2 ;;
+        --task) TASK="$2"; shift 2 ;;
         *)
             echo "Unknown argument: $1" >&2
             exit 2
