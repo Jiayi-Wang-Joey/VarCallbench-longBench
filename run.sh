@@ -24,6 +24,9 @@ case "$TASK" in
     longcallR)
         exec "$DIR/longcallR.sh" "$@"
         ;;
+    longcallR_nn)
+        exec "$DIR/longcallR_nn.sh" "$@"
+        ;;
     align)
         exec "$DIR/align.sh" "$@"
         ;;
