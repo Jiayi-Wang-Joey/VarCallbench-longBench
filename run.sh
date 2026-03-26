@@ -27,6 +27,9 @@ case "$TASK" in
     longcallR_nn)
         exec "$DIR/longcallR_nn.sh" "$@"
         ;;
+    plot_upset)
+        exec Rscript "$DIR/plot_upset.R" "$@"
+        ;;
     align)
         exec "$DIR/align.sh" "$@"
         ;;
