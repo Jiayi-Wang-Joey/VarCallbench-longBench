@@ -93,29 +93,28 @@ clean_caller_name <- function(x) {
 }
 
 read_vcf_ids <- function(vcf_path) {
-    vcf <- readVcf(vcf_path)
-    
+    vcf <- VariantAnnotation::readVcf(vcf_path)
     rr <- rowRanges(vcf)
     
-    ref <- as.character(ref(vcf))
-    alt <- vapply(alt(vcf), function(a) paste(as.character(a), collapse = ","), character(1))
+    ref_allele <- as.character(VariantAnnotation::ref(vcf))
+    alt_allele <- vapply(
+        VariantAnnotation::alt(vcf),
+        function(a) paste(as.character(a), collapse = ","),
+        character(1)
+    )
     
-    data.table(
+    dt <- data.table(
         seqnames = as.character(seqnames(rr)),
         pos = start(rr),
-        ref = ref,
-        alt = alt
-    )[
-        ,
-        variant_id := paste(seqnames, pos, ref, alt, sep = ":")
-    ][
-        ,
-        .(variant_id)
-    ][
-        !is.na(variant_id)
-    ][
-        unique(variant_id)
-    ]
+        ref = ref_allele,
+        alt = alt_allele
+    )
+    
+    dt[, variant_id := paste(seqnames, pos, ref, alt, sep = ":")]
+    dt <- dt[!is.na(variant_id) & alt != ""]
+    dt <- unique(dt[, .(variant_id)])
+    
+    dt
 }
 
 build_incidence <- function(meta_dt) {
