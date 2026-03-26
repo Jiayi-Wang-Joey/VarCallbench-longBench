@@ -34,7 +34,17 @@ case "$TASK" in
         exec "$DIR/align.sh" "$@"
         ;;
     "")
+        # collector autodetection
+        for arg in "$@"; do
+            case "$arg" in
+                --variant.vcf|--variant_vcf|--variant-vcf)
+                    exec Rscript "$DIR/plot_upset.R" "$@"
+                    ;;
+            esac
+        done
+
         # backward-compatible fallback
+        prev=""
         for arg in "$@"; do
             case "$arg" in
                 --s3_url)
@@ -44,6 +54,7 @@ case "$TASK" in
                     exec "$DIR/align.sh" "$@"
                     ;;
             esac
+            prev="$arg"
         done
         ;;
     *)
@@ -53,4 +64,5 @@ case "$TASK" in
 esac
 
 echo "ERROR: cannot determine module type from arguments" >&2
+echo "ARGS: $*" >&2
 exit 2
