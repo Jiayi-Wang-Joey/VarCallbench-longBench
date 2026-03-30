@@ -43,16 +43,25 @@ echo "TASK=${TASK}" >&2
 [ -f "${BAM}" ] || { echo "BAM not found: ${BAM}" >&2; exit 2; }
 [ -f "${REF}" ] || { echo "Reference not found: ${REF}" >&2; exit 2; }
 
+command -v samtools >/dev/null 2>&1 || { echo "samtools not found in PATH" >&2; exit 2; }
+command -v bcftools >/dev/null 2>&1 || { echo "bcftools not found in PATH" >&2; exit 2; }
+command -v tabix >/dev/null 2>&1 || { echo "tabix not found in PATH" >&2; exit 2; }
+
+# Resolve to absolute paths to avoid index lookup failures in downstream tools.
+BAM="$(readlink -f "${BAM}")"
+REF="$(readlink -f "${REF}")"
 mkdir -p "${OUTDIR}"
+OUTDIR="$(readlink -f "${OUTDIR}")"
+
+echo "ABS_BAM=${BAM}" >&2
+echo "ABS_REF=${REF}" >&2
+echo "ABS_OUTDIR=${OUTDIR}" >&2
+
 TMPDIR="${OUTDIR}/tmp"
 DATADIR="${OUTDIR}/data"
 VCFDIR="${OUTDIR}/vcf"
 LOGDIR="${OUTDIR}/logs"
 mkdir -p "${TMPDIR}" "${DATADIR}" "${VCFDIR}" "${LOGDIR}"
-
-command -v samtools >/dev/null 2>&1 || { echo "samtools not found in PATH" >&2; exit 2; }
-command -v bcftools >/dev/null 2>&1 || { echo "bcftools not found in PATH" >&2; exit 2; }
-command -v tabix >/dev/null 2>&1 || { echo "tabix not found in PATH" >&2; exit 2; }
 
 dataset_lc="$(printf '%s' "${DATASET}" | tr '[:upper:]' '[:lower:]')"
 
@@ -104,7 +113,7 @@ if ! samtools idxstats "${BAM}" > "${LOGDIR}/samtools_idxstats.initial.txt" 2> "
     }
 fi
 
-# Keep only standard chromosomes with mapped reads.
+# Keep only primary chromosomes with mapped reads.
 mapfile -t CHRS < <(
     samtools idxstats "${BAM}" 2> "${LOGDIR}/samtools_idxstats.contigs.log" \
     | awk '$3 > 0 {print $1}' \
@@ -117,7 +126,7 @@ mapfile -t CHRS < <(
 }
 
 # Optional debug restriction:
-#   DEBUG_CHR=chr22 bash longcallR_nn.sh ...
+# DEBUG_CHR=chr22 bash longcallR_nn.sh ...
 if [ -n "${DEBUG_CHR:-}" ]; then
     echo "DEBUG_CHR set: restricting to ${DEBUG_CHR}" >&2
     found=0
@@ -151,6 +160,18 @@ for CHR in "${CHRS[@]}"; do
 
     mkdir -p "${CHR_DATA_DIR}"
     rm -f "${CHR_VCF}"
+
+    if [ -f "${BAM}.bai" ]; then
+        echo "Using BAM index: ${BAM}.bai" >&2
+    elif [ -f "${BAM%.bam}.bai" ]; then
+        echo "Using BAM index: ${BAM%.bam}.bai" >&2
+    elif [ -f "${BAM}.csi" ]; then
+        echo "Using BAM index: ${BAM}.csi" >&2
+    else
+        echo "No BAM index found right before longcallR_dp for ${BAM}" >&2
+        ls -lh "$(dirname "${BAM}")" >&2 || true
+        exit 2
+    fi
 
     echo "[${CHR}] longcallR_dp predict" >&2
     if [ "${MIN_BASEQ_FLAG}" -eq 1 ]; then
