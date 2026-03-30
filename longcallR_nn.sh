@@ -42,10 +42,19 @@ echo "TASK=${TASK}" >&2
 
 [ -f "${BAM}" ] || { echo "BAM not found: ${BAM}" >&2; exit 2; }
 [ -f "${REF}" ] || { echo "Reference not found: ${REF}" >&2; exit 2; }
-[ -f "${BAM}.bai" ] || [ -f "${BAM%.bam}.bai" ] || {
+if [ -f "${BAM}.bai" ]; then
+    BAM_INDEX="${BAM}.bai"
+elif [ -f "${BAM%.bam}.bai" ]; then
+    BAM_INDEX="${BAM%.bam}.bai"
+elif [ -f "${BAM}.csi" ]; then
+    BAM_INDEX="${BAM}.csi"
+else
     echo "BAM index not found for: ${BAM}" >&2
+    echo "Looked for: ${BAM}.bai, ${BAM%.bam}.bai, ${BAM}.csi" >&2
     exit 2
-}
+fi
+
+echo "Using BAM index: ${BAM_INDEX}" >&2
 
 mkdir -p "${OUTDIR}"
 TMPDIR="${OUTDIR}/tmp"
