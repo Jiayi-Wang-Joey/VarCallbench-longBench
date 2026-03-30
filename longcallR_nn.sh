@@ -42,19 +42,6 @@ echo "TASK=${TASK}" >&2
 
 [ -f "${BAM}" ] || { echo "BAM not found: ${BAM}" >&2; exit 2; }
 [ -f "${REF}" ] || { echo "Reference not found: ${REF}" >&2; exit 2; }
-if [ -f "${BAM}.bai" ]; then
-    BAM_INDEX="${BAM}.bai"
-elif [ -f "${BAM%.bam}.bai" ]; then
-    BAM_INDEX="${BAM%.bam}.bai"
-elif [ -f "${BAM}.csi" ]; then
-    BAM_INDEX="${BAM}.csi"
-else
-    echo "BAM index not found for: ${BAM}" >&2
-    echo "Looked for: ${BAM}.bai, ${BAM%.bam}.bai, ${BAM}.csi" >&2
-    exit 2
-fi
-
-echo "Using BAM index: ${BAM_INDEX}" >&2
 
 mkdir -p "${OUTDIR}"
 TMPDIR="${OUTDIR}/tmp"
@@ -62,6 +49,10 @@ DATADIR="${OUTDIR}/data"
 VCFDIR="${OUTDIR}/vcf"
 LOGDIR="${OUTDIR}/logs"
 mkdir -p "${TMPDIR}" "${DATADIR}" "${VCFDIR}" "${LOGDIR}"
+
+command -v samtools >/dev/null 2>&1 || { echo "samtools not found in PATH" >&2; exit 2; }
+command -v bcftools >/dev/null 2>&1 || { echo "bcftools not found in PATH" >&2; exit 2; }
+command -v tabix >/dev/null 2>&1 || { echo "tabix not found in PATH" >&2; exit 2; }
 
 dataset_lc="$(printf '%s' "${DATASET}" | tr '[:upper:]' '[:lower:]')"
 
@@ -88,15 +79,34 @@ echo "MIN_BASEQ_FLAG=${MIN_BASEQ_FLAG}" >&2
 
 [ -x /usr/local/bin/longcallR_dp ] || { echo "Missing executable: /usr/local/bin/longcallR_dp" >&2; exit 2; }
 [ -x /usr/local/bin/longcallR_nn ] || { echo "Missing executable: /usr/local/bin/longcallR_nn" >&2; exit 2; }
-command -v samtools >/dev/null 2>&1 || { echo "samtools not found in PATH" >&2; exit 2; }
-command -v bcftools >/dev/null 2>&1 || { echo "bcftools not found in PATH" >&2; exit 2; }
-command -v tabix >/dev/null 2>&1 || { echo "tabix not found in PATH" >&2; exit 2; }
 
 FINAL_VCF_GZ="${OUTDIR}/${DATASET}.vcf.gz"
 
+# Ensure BAM index exists and is usable.
+if ! samtools idxstats "${BAM}" > "${LOGDIR}/samtools_idxstats.initial.txt" 2> "${LOGDIR}/samtools_idxstats.initial.log"; then
+    echo "BAM index missing or unusable for: ${BAM}" >&2
+    echo "Attempting to create BAM index with samtools index..." >&2
+
+    samtools index -@ "${THREADS}" "${BAM}" > "${LOGDIR}/samtools_index.log" 2>&1 || {
+        rc=$?
+        echo "samtools index failed with exit code ${rc}" >&2
+        echo "See log: ${LOGDIR}/samtools_index.log" >&2
+        tail -n 50 "${LOGDIR}/samtools_index.log" >&2 || true
+        exit "${rc}"
+    }
+
+    samtools idxstats "${BAM}" > "${LOGDIR}/samtools_idxstats.after_index.txt" 2> "${LOGDIR}/samtools_idxstats.after_index.log" || {
+        rc=$?
+        echo "samtools idxstats still failed after indexing for BAM: ${BAM}" >&2
+        echo "See log: ${LOGDIR}/samtools_idxstats.after_index.log" >&2
+        tail -n 50 "${LOGDIR}/samtools_idxstats.after_index.log" >&2 || true
+        exit "${rc}"
+    }
+fi
+
 # Keep only standard chromosomes with mapped reads.
 mapfile -t CHRS < <(
-    samtools idxstats "${BAM}" \
+    samtools idxstats "${BAM}" 2> "${LOGDIR}/samtools_idxstats.contigs.log" \
     | awk '$3 > 0 {print $1}' \
     | grep -E '^(chr([1-9]|1[0-9]|2[0-2]|X|Y|M)|([1-9]|1[0-9]|2[0-2]|X|Y|MT))$'
 )
