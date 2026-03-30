@@ -77,8 +77,9 @@ FINAL_VCF_GZ="${OUTDIR}/${DATASET}.vcf.gz"
 
 # collect contigs from BAM header, similar to per-chromosome workflow
 mapfile -t CHRS < <(
-    samtools view -H "${BAM}" \
-    | awk -F'\t' '$1=="@SQ"{for(i=1;i<=NF;i++) if($i ~ /^SN:/){sub(/^SN:/,"",$i); print $i}}'
+    samtools idxstats "${BAM}" \
+    | awk '$3 > 0 {print $1}' \
+    | grep -E '^(chr([1-9]|1[0-9]|2[0-2]|X|Y|M)|([1-9]|1[0-9]|2[0-2]|X|Y|MT))$'
 )
 
 [ "${#CHRS[@]}" -gt 0 ] || { echo "No contigs found in BAM header" >&2; exit 2; }
