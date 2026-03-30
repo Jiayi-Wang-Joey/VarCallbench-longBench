@@ -8,7 +8,7 @@ THREADS=""
 OUTDIR=""
 TASK=""
 
-echo "ARGS: $@" >&2
+echo "ARGS: $*" >&2
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -42,6 +42,10 @@ echo "TASK=${TASK}" >&2
 
 [ -f "${BAM}" ] || { echo "BAM not found: ${BAM}" >&2; exit 2; }
 [ -f "${REF}" ] || { echo "Reference not found: ${REF}" >&2; exit 2; }
+[ -f "${BAM}.bai" ] || [ -f "${BAM%.bam}.bai" ] || {
+    echo "BAM index not found for: ${BAM}" >&2
+    exit 2
+}
 
 mkdir -p "${OUTDIR}"
 TMPDIR="${OUTDIR}/tmp"
@@ -55,36 +59,65 @@ dataset_lc="$(printf '%s' "${DATASET}" | tr '[:upper:]' '[:lower:]')"
 if echo "${dataset_lc}" | grep -q 'pb'; then
     MODEL_CONFIG="/models/pb_masseq_config.yaml"
     MODEL_CKPT="/models/pb_masseq_model.chkpt"
-    MIN_BASEQ=""
+    MIN_BASEQ_FLAG=0
 elif echo "${dataset_lc}" | grep -q 'drna'; then
     MODEL_CONFIG="/models/ont_drna_config.yaml"
     MODEL_CKPT="/models/ont_drna_model.chkpt"
-    MIN_BASEQ="--min-baseq 10"
+    MIN_BASEQ_FLAG=1
 else
     MODEL_CONFIG="/models/ont_cdna_config.yaml"
     MODEL_CKPT="/models/ont_cdna_model.chkpt"
-    MIN_BASEQ="--min-baseq 10"
+    MIN_BASEQ_FLAG=1
 fi
 
 echo "MODEL_CONFIG=${MODEL_CONFIG}" >&2
 echo "MODEL_CKPT=${MODEL_CKPT}" >&2
-echo "MIN_BASEQ=${MIN_BASEQ}" >&2
+echo "MIN_BASEQ_FLAG=${MIN_BASEQ_FLAG}" >&2
 
 [ -f "${MODEL_CONFIG}" ] || { echo "Missing model config: ${MODEL_CONFIG}" >&2; exit 2; }
 [ -f "${MODEL_CKPT}" ] || { echo "Missing model checkpoint: ${MODEL_CKPT}" >&2; exit 2; }
 
+[ -x /usr/local/bin/longcallR_dp ] || { echo "Missing executable: /usr/local/bin/longcallR_dp" >&2; exit 2; }
+[ -x /usr/local/bin/longcallR_nn ] || { echo "Missing executable: /usr/local/bin/longcallR_nn" >&2; exit 2; }
+command -v samtools >/dev/null 2>&1 || { echo "samtools not found in PATH" >&2; exit 2; }
+command -v bcftools >/dev/null 2>&1 || { echo "bcftools not found in PATH" >&2; exit 2; }
+command -v tabix >/dev/null 2>&1 || { echo "tabix not found in PATH" >&2; exit 2; }
+
 FINAL_VCF_GZ="${OUTDIR}/${DATASET}.vcf.gz"
 
-# collect contigs from BAM header, similar to per-chromosome workflow
+# Keep only standard chromosomes with mapped reads.
 mapfile -t CHRS < <(
     samtools idxstats "${BAM}" \
     | awk '$3 > 0 {print $1}' \
     | grep -E '^(chr([1-9]|1[0-9]|2[0-2]|X|Y|M)|([1-9]|1[0-9]|2[0-2]|X|Y|MT))$'
 )
 
-[ "${#CHRS[@]}" -gt 0 ] || { echo "No contigs found in BAM header" >&2; exit 2; }
+[ "${#CHRS[@]}" -gt 0 ] || {
+    echo "No primary contigs with mapped reads found in BAM: ${BAM}" >&2
+    exit 2
+}
 
-echo "Detected contigs: ${#CHRS[@]}" >&2
+# Optional debug restriction:
+#   DEBUG_CHR=chr22 bash longcallR_nn.sh ...
+if [ -n "${DEBUG_CHR:-}" ]; then
+    echo "DEBUG_CHR set: restricting to ${DEBUG_CHR}" >&2
+    found=0
+    for c in "${CHRS[@]}"; do
+        if [ "${c}" = "${DEBUG_CHR}" ]; then
+            found=1
+            CHRS=("${DEBUG_CHR}")
+            break
+        fi
+    done
+    [ "${found}" -eq 1 ] || {
+        echo "DEBUG_CHR ${DEBUG_CHR} not found among selected contigs" >&2
+        printf 'Selected contigs: %s\n' "${CHRS[*]}" >&2
+        exit 2
+    }
+fi
+
+echo "Detected primary contigs with mapped reads: ${#CHRS[@]}" >&2
+printf '%s\n' "${CHRS[@]}" >&2
 
 VCF_LIST="${TMPDIR}/vcf.list"
 : > "${VCF_LIST}"
@@ -94,30 +127,44 @@ for CHR in "${CHRS[@]}"; do
 
     CHR_DATA_DIR="${DATADIR}/${CHR}"
     CHR_VCF="${VCFDIR}/${CHR}.vcf"
-    CHR_LOG="${LOGDIR}/${CHR}.log"
+    DP_LOG="${LOGDIR}/${CHR}.longcallR_dp.log"
+    NN_LOG="${LOGDIR}/${CHR}.longcallR_nn.log"
 
     mkdir -p "${CHR_DATA_DIR}"
+    rm -f "${CHR_VCF}"
 
     echo "[${CHR}] longcallR_dp predict" >&2
-    if [ -n "${MIN_BASEQ}" ]; then
+    if [ "${MIN_BASEQ_FLAG}" -eq 1 ]; then
         /usr/local/bin/longcallR_dp \
             --mode predict \
             --bam-path "${BAM}" \
             --ref-path "${REF}" \
-            --threads "${THREADS}" \
+            --threads 1 \
             --contigs "${CHR}" \
             --output "${CHR_DATA_DIR}" \
             --min-baseq 10 \
-            >> "${CHR_LOG}" 2>&1
+            > "${DP_LOG}" 2>&1 || {
+                rc=$?
+                echo "[${CHR}] longcallR_dp failed with exit code ${rc}" >&2
+                echo "[${CHR}] See log: ${DP_LOG}" >&2
+                tail -n 50 "${DP_LOG}" >&2 || true
+                exit "${rc}"
+            }
     else
         /usr/local/bin/longcallR_dp \
             --mode predict \
             --bam-path "${BAM}" \
             --ref-path "${REF}" \
-            --threads "${THREADS}" \
+            --threads 1 \
             --contigs "${CHR}" \
             --output "${CHR_DATA_DIR}" \
-            >> "${CHR_LOG}" 2>&1
+            > "${DP_LOG}" 2>&1 || {
+                rc=$?
+                echo "[${CHR}] longcallR_dp failed with exit code ${rc}" >&2
+                echo "[${CHR}] See log: ${DP_LOG}" >&2
+                tail -n 50 "${DP_LOG}" >&2 || true
+                exit "${rc}"
+            }
     fi
 
     echo "[${CHR}] longcallR_nn call" >&2
@@ -130,17 +177,34 @@ for CHR in "${CHRS[@]}"; do
         --no_cuda \
         -max_depth 200 \
         -batch_size 256 \
-        >> "${CHR_LOG}" 2>&1
+        > "${NN_LOG}" 2>&1 || {
+            rc=$?
+            echo "[${CHR}] longcallR_nn failed with exit code ${rc}" >&2
+            echo "[${CHR}] See log: ${NN_LOG}" >&2
+            tail -n 50 "${NN_LOG}" >&2 || true
+            exit "${rc}"
+        }
 
-    [ -f "${CHR_VCF}" ] || { echo "Expected per-contig VCF not found: ${CHR_VCF}" >&2; exit 2; }
+    [ -f "${CHR_VCF}" ] || {
+        echo "Expected per-contig VCF not found: ${CHR_VCF}" >&2
+        exit 2
+    }
+
+    if [ ! -s "${CHR_VCF}" ]; then
+        echo "Per-contig VCF is empty: ${CHR_VCF}" >&2
+        exit 2
+    fi
 
     printf '%s\n' "${CHR_VCF}" >> "${VCF_LIST}"
 done
 
-[ -s "${VCF_LIST}" ] || { echo "No per-contig VCFs produced" >&2; exit 2; }
+[ -s "${VCF_LIST}" ] || {
+    echo "No per-contig VCFs produced" >&2
+    exit 2
+}
 
 echo "=== Merging VCFs ===" >&2
-bcftools concat $(cat "${VCF_LIST}") 2>> "${LOGDIR}/merge.log" \
+bcftools concat -f "${VCF_LIST}" 2>> "${LOGDIR}/merge.log" \
     | bcftools sort -Oz -o "${FINAL_VCF_GZ}" 2>> "${LOGDIR}/merge.log"
 
 tabix -f -p vcf "${FINAL_VCF_GZ}" 2>> "${LOGDIR}/merge.log"
