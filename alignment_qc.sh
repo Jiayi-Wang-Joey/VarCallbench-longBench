@@ -5,7 +5,6 @@ BAM=""
 THREADS="1"
 
 echo "ARGS: $*" >&2
-echo "PWD: $(pwd)" >&2
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -27,6 +26,13 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# infer real job output directory from stderr.log location
+STDERR_PATH="$(readlink -f /proc/self/fd/2)"
+OUTDIR="$(dirname "$STDERR_PATH")"
+
+echo "STDERR_PATH: $STDERR_PATH" >&2
+echo "OUTDIR: $OUTDIR" >&2
+
 if [ -z "$BAM" ]; then
     BAM="$(find "$(pwd)/../.." -type f -name "*.aligned.bam" | head -n 1 || true)"
 fi
@@ -42,8 +48,8 @@ dataset=$(basename "$BAM")
 dataset=${dataset%.aligned.bam}
 dataset=${dataset%.bam}
 
-STATS="$(pwd)/${dataset}.samtools.stats"
-CSV="$(pwd)/${dataset}.alignment_qc.csv"
+STATS="$OUTDIR/${dataset}.samtools.stats"
+CSV="$OUTDIR/${dataset}.alignment_qc.csv"
 
 samtools stats -@ "$THREADS" "$BAM" > "$STATS"
 
@@ -71,4 +77,4 @@ END {
 }' "$STATS" > "$CSV"
 
 echo "Wrote: $CSV" >&2
-ls -lh "$(pwd)" >&2
+ls -lh "$OUTDIR" >&2
