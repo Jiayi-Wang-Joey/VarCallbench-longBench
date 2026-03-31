@@ -5,14 +5,42 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 TASK=""
 
-prev=""
-for arg in "$@"; do
-    if [ "$prev" = "--task" ]; then
-        TASK="$arg"
-        break
-    fi
-    prev="$arg"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --task)
+            if [ $# -lt 2 ]; then
+                echo "ERROR: --task requires a value" >&2
+                exit 2
+            fi
+            TASK="$2"
+            break
+            ;;
+    esac
+    shift
 done
+
+dispatch_collector() {
+    for arg in "$@"; do
+        case "$arg" in
+            --variant.vcf|--variant_vcf|--variant-vcf)
+                exec Rscript "$DIR/plot_upset.R" "$@"
+                ;;
+        esac
+    done
+}
+
+dispatch_legacy() {
+    for arg in "$@"; do
+        case "$arg" in
+            --s3_url)
+                exec "$DIR/download.sh" "$@"
+                ;;
+            --reference_genome)
+                exec "$DIR/align.sh" "$@"
+                ;;
+        esac
+    done
+}
 
 case "$TASK" in
     clair3_rna)
@@ -30,32 +58,18 @@ case "$TASK" in
     plot_upset)
         exec Rscript "$DIR/plot_upset.R" "$@"
         ;;
+    alignment_qc)
+        exec "$DIR/alignment_qc.sh" "$@"
+        ;;
+    gnomad_detection)
+        exec "$DIR/gnomad_detection.sh" "$@"
+        ;;
     align)
         exec "$DIR/align.sh" "$@"
         ;;
     "")
-        # collector autodetection
-        for arg in "$@"; do
-            case "$arg" in
-                --variant.vcf|--variant_vcf|--variant-vcf)
-                    exec Rscript "$DIR/plot_upset.R" "$@"
-                    ;;
-            esac
-        done
-
-        # backward-compatible fallback
-        prev=""
-        for arg in "$@"; do
-            case "$arg" in
-                --s3_url)
-                    exec "$DIR/download.sh" "$@"
-                    ;;
-                --reference_genome)
-                    exec "$DIR/align.sh" "$@"
-                    ;;
-            esac
-            prev="$arg"
-        done
+        dispatch_collector "$@"
+        dispatch_legacy "$@"
         ;;
     *)
         echo "ERROR: unknown task: $TASK" >&2
