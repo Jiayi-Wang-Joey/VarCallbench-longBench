@@ -26,34 +26,45 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# infer real job output directory from stderr.log location
 STDERR_PATH="$(readlink -f /proc/self/fd/2)"
 OUTDIR="$(dirname "$STDERR_PATH")"
+JOBDIR="$(pwd)"
 
 echo "STDERR_PATH: $STDERR_PATH" >&2
 echo "OUTDIR: $OUTDIR" >&2
+echo "JOBDIR: $JOBDIR" >&2
 
+# infer dataset from current path: out/rawdata/<dataset>/...
 if [ -z "$BAM" ]; then
-    BAM="$(find "$(pwd)/../.." -type f -name "*.aligned.bam" | head -n 1 || true)"
+    DATASET="$(printf '%s\n' "$JOBDIR" | sed -n 's#.*out/rawdata/\([^/]*\)/.*#\1#p')"
+    if [ -z "${DATASET:-}" ]; then
+        echo "Could not infer dataset from working directory" >&2
+        exit 1
+    fi
+
+    BAM_CANDIDATE="$(readlink -f "$JOBDIR/../../../${DATASET}.aligned.bam" || true)"
+    if [ -n "${BAM_CANDIDATE:-}" ] && [ -f "$BAM_CANDIDATE" ]; then
+        BAM="$BAM_CANDIDATE"
+    fi
 fi
 
 if [ -z "$BAM" ]; then
-    echo "Could not find an aligned BAM automatically" >&2
+    echo "Could not determine aligned BAM" >&2
     exit 1
 fi
 
 echo "Using BAM: $BAM" >&2
 
-dataset=$(basename "$BAM")
-dataset=${dataset%.aligned.bam}
-dataset=${dataset%.bam}
+DATASET="$(basename "$BAM")"
+DATASET="${DATASET%.aligned.bam}"
+DATASET="${DATASET%.bam}"
 
-STATS="$OUTDIR/${dataset}.samtools.stats"
-CSV="$OUTDIR/${dataset}.alignment_qc.csv"
+STATS="$OUTDIR/${DATASET}.samtools.stats"
+CSV="$OUTDIR/${DATASET}.alignment_qc.csv"
 
 samtools stats -@ "$THREADS" "$BAM" > "$STATS"
 
-awk -F '\t' -v bam="$BAM" -v dataset="$dataset" 'BEGIN {
+awk -F '\t' -v bam="$BAM" -v dataset="$DATASET" 'BEGIN {
     OFS=","
     print "dataset_id,bam,total_sequences,mapped_reads,mapping_rate_pct,average_length,average_quality,error_rate"
 }
