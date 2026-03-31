@@ -96,14 +96,23 @@ echo "Using VCF: $VCF" >&2
 echo "Using GTF: $GTF" >&2
 
 CSV="$OUTDIR/${DATASET}.gnomad_detection.csv"
-TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
 
-EXON_BED="$TMPDIR/exons.merged.bed"
-PASS_VCF="$TMPDIR/${DATASET}.pass.vcf.gz"
-EXONIC_VCF="$TMPDIR/${DATASET}.pass.exonic.vcf.gz"
-POS_BED="$TMPDIR/${DATASET}.sites.bed"
-GNOMAD_SUB="$TMPDIR/${DATASET}.gnomad.subset.vcf.gz"
+BASE_TMP="${TMPDIR:-/tmp}"
+if [ ! -d "$BASE_TMP" ]; then
+    BASE_TMP="/tmp"
+fi
+mkdir -p "$BASE_TMP"
+
+WORKDIR="$(mktemp -d "$BASE_TMP/gnomad_detection.XXXXXX")"
+trap 'rm -rf "$WORKDIR"' EXIT
+
+echo "WORKDIR: $WORKDIR" >&2
+
+EXON_BED="$WORKDIR/exons.merged.bed"
+PASS_VCF="$WORKDIR/${DATASET}.pass.vcf.gz"
+EXONIC_VCF="$WORKDIR/${DATASET}.pass.exonic.vcf.gz"
+POS_BED="$WORKDIR/${DATASET}.sites.bed"
+GNOMAD_SUB="$WORKDIR/${DATASET}.gnomad.subset.vcf.gz"
 
 awk 'BEGIN{OFS="\t"} $0 !~ /^#/ && $3=="exon" {print $1, $4-1, $5}' "$GTF" \
     | sort -k1,1 -k2,2n -k3,3n \
