@@ -4,7 +4,6 @@ set -euo pipefail
 GTF=""
 GNOMAD_URL="https://storage.googleapis.com/gcp-public-data--gnomad/release/3.1.2/vcf/genomes/gnomad.genomes.v3.1.2.sites.vcf.bgz"
 THREADS="1"
-VCF=""
 
 echo "ARGS: $*" >&2
 
@@ -21,10 +20,6 @@ while [ $# -gt 0 ]; do
             THREADS="$2"
             shift 2
             ;;
-        --variant.vcf|--variant_vcf|--variant-vcf)
-            VCF="$2"
-            shift 2
-            ;;
         --gnomad_url|--gnomad-url)
             GNOMAD_URL="$2"
             shift 2
@@ -36,36 +31,51 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -z "$GTF" ]; then
-    echo "Missing --gtf" >&2
-    exit 1
-fi
-
 STDERR_PATH="$(readlink -f /proc/self/fd/2)"
 OUTDIR="$(dirname "$STDERR_PATH")"
+PARAM_JSON="$OUTDIR/parameters.json"
 
 echo "STDERR_PATH: $STDERR_PATH" >&2
 echo "OUTDIR: $OUTDIR" >&2
+echo "PARAM_JSON: $PARAM_JSON" >&2
 
-if [ -z "$VCF" ]; then
-    DATASET="$(printf '%s\n' "$STDERR_PATH" | sed -n 's#.*out/rawdata/\([^/]*\)/.*#\1#p')"
-    if [ -z "${DATASET:-}" ]; then
-        echo "Could not infer dataset from stderr path" >&2
-        exit 1
-    fi
-
-    VC_DIR="$(printf '%s\n' "$STDERR_PATH" | sed 's#/gnomad_detection/.*##')"
-    VCF="${VC_DIR}/${DATASET}.vcf.gz"
+if [ -z "$GTF" ] && [ -f "$PARAM_JSON" ]; then
+    GTF="$(python - <<'PY' "$PARAM_JSON"
+import json, sys
+p = json.load(open(sys.argv[1]))
+params = p.get("parameters", {})
+gtf = params.get("gtf", "")
+print(gtf)
+PY
+)"
 fi
+
+if [ -z "$GTF" ]; then
+    echo "Missing gtf parameter" >&2
+    exit 1
+fi
+
+if [ ! -f "$GTF" ]; then
+    echo "Could not find GTF: $GTF" >&2
+    exit 1
+fi
+
+DATASET="$(printf '%s\n' "$STDERR_PATH" | sed -n 's#.*out/rawdata/\([^/]*\)/.*#\1#p')"
+if [ -z "${DATASET:-}" ]; then
+    echo "Could not infer dataset from stderr path" >&2
+    exit 1
+fi
+
+VC_DIR="$(printf '%s\n' "$STDERR_PATH" | sed 's#/gnomad_detection/.*##')"
+VCF="${VC_DIR}/${DATASET}.vcf.gz"
 
 if [ ! -f "$VCF" ]; then
     echo "Could not find VCF: $VCF" >&2
     exit 1
 fi
 
-DATASET="$(basename "$VCF")"
-DATASET="${DATASET%.vcf.gz}"
-DATASET="${DATASET%.vcf}"
+echo "Using VCF: $VCF" >&2
+echo "Using GTF: $GTF" >&2
 
 CSV="$OUTDIR/${DATASET}.gnomad_detection.csv"
 TMPDIR="$(mktemp -d)"
@@ -111,6 +121,5 @@ RATE=$(awk -v o="$OVERLAP" -v t="$TOTAL" 'BEGIN{printf "%.6f", (t>0 ? o/t : 0)}'
     echo "${DATASET},${TOTAL},${OVERLAP},${RATE}"
 } > "$CSV"
 
-echo "Using VCF: $VCF" >&2
 echo "Wrote: $CSV" >&2
 ls -lh "$OUTDIR" >&2
