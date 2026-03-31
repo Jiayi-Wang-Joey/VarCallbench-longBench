@@ -6,17 +6,19 @@ OUTDIR=""
 THREADS="1"
 TASK=""
 
+echo "ARGS: $*" >&2
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --task)
             TASK="$2"
             shift 2
             ;;
-        --align.bam|--bam)
+        --align.bam|--align_bam|--align-bam|--bam)
             BAM="$2"
             shift 2
             ;;
-        --output_dir)
+        --output_dir|--output-dir|--output.dir)
             OUTDIR="$2"
             shift 2
             ;;
@@ -32,7 +34,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$BAM" ]; then
-    echo "Missing --align.bam/--bam" >&2
+    echo "Missing --align.bam/--align_bam/--align-bam/--bam" >&2
     exit 1
 fi
 
@@ -63,7 +65,7 @@ END {
     avg_qual = val["average quality"]
     err = val["error rate"]
 
-    rate = ""
+    rate = 0
     if (total > 0) {
         rate = 100 * mapped / total
     }
