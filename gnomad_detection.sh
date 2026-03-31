@@ -42,13 +42,31 @@ echo "PARAM_JSON: $PARAM_JSON" >&2
 if [ -z "$GTF" ] && [ -f "$PARAM_JSON" ]; then
     GTF="$(python - <<'PY' "$PARAM_JSON"
 import json, sys
-p = json.load(open(sys.argv[1]))
-params = p.get("parameters", {})
-gtf = params.get("gtf", "")
-print(gtf)
+
+def find_key(obj, key):
+    if isinstance(obj, dict):
+        if key in obj and isinstance(obj[key], str):
+            return obj[key]
+        for v in obj.values():
+            out = find_key(v, key)
+            if out:
+                return out
+    elif isinstance(obj, list):
+        for v in obj:
+            out = find_key(v, key)
+            if out:
+                return out
+    return ""
+
+with open(sys.argv[1]) as fh:
+    data = json.load(fh)
+
+print(find_key(data, "gtf"))
 PY
 )"
 fi
+
+echo "GTF from parameters.json: $GTF" >&2
 
 if [ -z "$GTF" ]; then
     echo "Missing gtf parameter" >&2
