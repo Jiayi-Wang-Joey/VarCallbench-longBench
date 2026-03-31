@@ -2,10 +2,10 @@
 set -euo pipefail
 
 BAM=""
-OUTDIR=""
 THREADS="1"
 
 echo "ARGS: $*" >&2
+echo "PWD: $(pwd)" >&2
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -14,10 +14,6 @@ while [ $# -gt 0 ]; do
             ;;
         --align.bam|--align_bam|--align-bam|--bam)
             BAM="$2"
-            shift 2
-            ;;
-        --output_dir|--output-dir|--output.dir)
-            OUTDIR="$2"
             shift 2
             ;;
         --threads)
@@ -31,11 +27,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -z "$OUTDIR" ]; then
-    OUTDIR="$PWD"
-fi
-mkdir -p "$OUTDIR"
-
 if [ -z "$BAM" ]; then
     BAM="$(find "$(pwd)/../.." -type f -name "*.aligned.bam" | head -n 1 || true)"
 fi
@@ -47,12 +38,16 @@ fi
 
 echo "Using BAM: $BAM" >&2
 
-STATS="$OUTDIR/samtools.stats"
-CSV="$OUTDIR/alignment_qc.csv"
+dataset=$(basename "$BAM")
+dataset=${dataset%.aligned.bam}
+dataset=${dataset%.bam}
+
+STATS="$(pwd)/${dataset}.samtools.stats"
+CSV="$(pwd)/${dataset}.alignment_qc.csv"
 
 samtools stats -@ "$THREADS" "$BAM" > "$STATS"
 
-awk -F '\t' -v bam="$BAM" 'BEGIN {
+awk -F '\t' -v bam="$BAM" -v dataset="$dataset" 'BEGIN {
     OFS=","
     print "dataset_id,bam,total_sequences,mapped_reads,mapping_rate_pct,average_length,average_quality,error_rate"
 }
@@ -72,12 +67,8 @@ END {
         rate = 100 * mapped / total
     }
 
-    dataset = bam
-    sub(/^.*\//, "", dataset)
-    sub(/\.aligned\.bam$/, "", dataset)
-    sub(/\.bam$/, "", dataset)
-
     print dataset, bam, total, mapped, rate, avg_len, avg_qual, err
 }' "$STATS" > "$CSV"
 
 echo "Wrote: $CSV" >&2
+ls -lh "$(pwd)" >&2
