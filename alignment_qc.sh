@@ -2,98 +2,78 @@
 set -euo pipefail
 
 BAM=""
-THREADS="1"
 OUTDIR=""
+THREADS="1"
+TASK=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --task)
+            TASK="$2"
+            shift 2
+            ;;
         --align.bam|--bam)
-            BAM="$2"; shift 2 ;;
-        --threads)
-            THREADS="$2"; shift 2 ;;
+            BAM="$2"
+            shift 2
+            ;;
         --output_dir)
-            OUTDIR="$2"; shift 2 ;;
+            OUTDIR="$2"
+            shift 2
+            ;;
+        --threads)
+            THREADS="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            exit 1 ;;
+            exit 1
+            ;;
     esac
 done
 
-if [ -z "$BAM" ] || [ -z "$OUTDIR" ]; then
-    echo "Missing --align.bam/--bam or --output_dir" >&2
+if [ -z "$BAM" ]; then
+    echo "Missing --align.bam/--bam" >&2
+    exit 1
+fi
+
+if [ -z "$OUTDIR" ]; then
+    echo "Missing --output_dir" >&2
     exit 1
 fi
 
 mkdir -p "$OUTDIR"
 
-samtools stats -@ "$THREADS" "$BAM" > "$OUTDIR/samtools.stats"
+STATS="$OUTDIR/samtools.stats"
+CSV="$OUTDIR/alignment_qc.csv"
 
-python - "$BAM" "$OUTDIR/samtools.stats" "$OUTDIR/alignment_qc.csv" <<'PY'
-import csv
-import os
-import sys
+samtools stats -@ "$THREADS" "$BAM" > "$STATS"
 
-bam = sys.argv[1]
-stats_file = sys.argv[2]
-out_csv = sys.argv[3]
-
-metrics = {
-    "dataset_id": os.path.basename(bam).replace(".aligned.sorted.bam", "").replace(".bam", ""),
-    "bam": bam,
-    "total_sequences": "",
-    "mapped_reads": "",
-    "mapping_rate_pct": "",
-    "average_length": "",
-    "average_quality": "",
-    "error_rate": "",
-    "insert_size_average": ""
+awk -F '\t' -v bam="$BAM" 'BEGIN {
+    OFS=","
+    print "dataset_id,bam,total_sequences,mapped_reads,mapping_rate_pct,average_length,average_quality,error_rate"
 }
-
-wanted = {
-    "raw total sequences:": "total_sequences",
-    "reads mapped:": "mapped_reads",
-    "reads mapped and paired:": None,
-    "average length:": "average_length",
-    "average quality:": "average_quality",
-    "error rate:": "error_rate",
-    "insert size average:": "insert_size_average"
+$1 == "SN" {
+    gsub(":$", "", $2)
+    val[$2] = $3
 }
+END {
+    total = val["raw total sequences"]
+    mapped = val["reads mapped"]
+    avg_len = val["average length"]
+    avg_qual = val["average quality"]
+    err = val["error rate"]
 
-with open(stats_file) as fh:
-    for line in fh:
-        if not line.startswith("SN\t"):
-            continue
-        parts = line.rstrip("\n").split("\t")
-        if len(parts) < 3:
-            continue
-        key = parts[1]
-        val = parts[2]
-        if key in wanted and wanted[key] is not None:
-            metrics[wanted[key]] = val
+    rate = ""
+    if (total > 0) {
+        rate = 100 * mapped / total
+    }
 
-total = metrics["total_sequences"]
-mapped = metrics["mapped_reads"]
-try:
-    total_f = float(total)
-    mapped_f = float(mapped)
-    metrics["mapping_rate_pct"] = 100 * mapped_f / total_f if total_f > 0 else ""
-except Exception:
-    metrics["mapping_rate_pct"] = ""
+    dataset = bam
+    sub(/^.*\//, "", dataset)
+    sub(/\.aligned\.bam$/, "", dataset)
+    sub(/\.bam$/, "", dataset)
 
-fieldnames = [
-    "dataset_id",
-    "bam",
-    "total_sequences",
-    "mapped_reads",
-    "mapping_rate_pct",
-    "average_length",
-    "average_quality",
-    "error_rate",
-    "insert_size_average"
-]
+    print dataset, bam, total, mapped, rate, avg_len, avg_qual, err
+}' "$STATS" > "$CSV"
 
-with open(out_csv, "w", newline="") as out:
-    writer = csv.DictWriter(out, fieldnames=fieldnames)
-    writer.writeheader()
-    writer.writerow(metrics)
-PY
+echo "Wrote: $CSV" >&2
