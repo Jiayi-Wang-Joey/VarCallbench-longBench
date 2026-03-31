@@ -4,14 +4,12 @@ set -euo pipefail
 BAM=""
 OUTDIR=""
 THREADS="1"
-TASK=""
 
 echo "ARGS: $*" >&2
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --task)
-            TASK="$2"
             shift 2
             ;;
         --align.bam|--align_bam|--align-bam|--bam)
@@ -33,17 +31,21 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -z "$BAM" ]; then
-    echo "Missing --align.bam/--align_bam/--align-bam/--bam" >&2
-    exit 1
-fi
-
 if [ -z "$OUTDIR" ]; then
-    echo "Missing --output_dir" >&2
+    OUTDIR="$PWD"
+fi
+mkdir -p "$OUTDIR"
+
+if [ -z "$BAM" ]; then
+    BAM="$(find "$(pwd)/../.." -type f -name "*.aligned.bam" | head -n 1 || true)"
+fi
+
+if [ -z "$BAM" ]; then
+    echo "Could not find an aligned BAM automatically" >&2
     exit 1
 fi
 
-mkdir -p "$OUTDIR"
+echo "Using BAM: $BAM" >&2
 
 STATS="$OUTDIR/samtools.stats"
 CSV="$OUTDIR/alignment_qc.csv"
