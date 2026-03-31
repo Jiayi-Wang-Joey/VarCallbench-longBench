@@ -94,6 +94,11 @@ clean_caller_name <- function(x) {
 
 read_vcf_ids <- function(vcf_path) {
     vcf <- VariantAnnotation::readVcf(vcf_path)
+    
+    ## keep only PASS
+    filt <- as.character(VariantAnnotation::fixed(vcf)$FILTER)
+    vcf <- vcf[!is.na(filt) & filt == "PASS"]
+    
     rr <- rowRanges(vcf)
     
     ref_allele <- as.character(VariantAnnotation::ref(vcf))
