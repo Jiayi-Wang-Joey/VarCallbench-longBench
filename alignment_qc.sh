@@ -28,28 +28,23 @@ done
 
 STDERR_PATH="$(readlink -f /proc/self/fd/2)"
 OUTDIR="$(dirname "$STDERR_PATH")"
-JOBDIR="$(pwd)"
 
 echo "STDERR_PATH: $STDERR_PATH" >&2
 echo "OUTDIR: $OUTDIR" >&2
-echo "JOBDIR: $JOBDIR" >&2
 
-# infer dataset from current path: out/rawdata/<dataset>/...
 if [ -z "$BAM" ]; then
-    DATASET="$(printf '%s\n' "$JOBDIR" | sed -n 's#.*out/rawdata/\([^/]*\)/.*#\1#p')"
+    DATASET="$(printf '%s\n' "$STDERR_PATH" | sed -n 's#.*out/rawdata/\([^/]*\)/.*#\1#p')"
     if [ -z "${DATASET:-}" ]; then
-        echo "Could not infer dataset from working directory" >&2
+        echo "Could not infer dataset from stderr path" >&2
         exit 1
     fi
 
-    BAM_CANDIDATE="$(readlink -f "$JOBDIR/../../../${DATASET}.aligned.bam" || true)"
-    if [ -n "${BAM_CANDIDATE:-}" ] && [ -f "$BAM_CANDIDATE" ]; then
-        BAM="$BAM_CANDIDATE"
-    fi
+    ALIGN_DIR="$(printf '%s\n' "$STDERR_PATH" | sed 's#/alignment_qc/.*##')"
+    BAM="${ALIGN_DIR}/${DATASET}.aligned.bam"
 fi
 
-if [ -z "$BAM" ]; then
-    echo "Could not determine aligned BAM" >&2
+if [ ! -f "$BAM" ]; then
+    echo "Could not find BAM: $BAM" >&2
     exit 1
 fi
 
