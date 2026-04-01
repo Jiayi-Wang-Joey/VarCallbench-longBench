@@ -64,6 +64,9 @@ case "$TASK" in
     gnomad_detection)
         exec "$DIR/gnomad_detection.sh" "$@"
         ;;
+    somatic_detection)
+        exec "$DIR/somatic_detection.sh" "$@"
+        ;;
     align)
         exec "$DIR/align.sh" "$@"
         ;;
