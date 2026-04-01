@@ -2,7 +2,7 @@
 set -euo pipefail
 
 GTF=""
-GNOMAD_URL="https://storage.googleapis.com/gcp-public-data--gnomad/release/3.1.2/vcf/genomes/gnomad.genomes.v3.1.2.sites.vcf.bgz"
+GNOMAD_VCF=""
 THREADS="1"
 
 echo "ARGS: $*" >&2
@@ -16,12 +16,12 @@ while [ $# -gt 0 ]; do
             GTF="$2"
             shift 2
             ;;
-        --threads)
-            THREADS="$2"
+        --gnomad_vcf|--gnomad-vcf)
+            GNOMAD_VCF="$2"
             shift 2
             ;;
-        --gnomad_url|--gnomad-url)
-            GNOMAD_URL="$2"
+        --threads)
+            THREADS="$2"
             shift 2
             ;;
         *)
@@ -39,8 +39,9 @@ echo "STDERR_PATH: $STDERR_PATH" >&2
 echo "OUTDIR: $OUTDIR" >&2
 echo "PARAM_JSON: $PARAM_JSON" >&2
 
-if [ -z "$GTF" ] && [ -f "$PARAM_JSON" ]; then
-    GTF="$(python - <<'PY' "$PARAM_JSON"
+if [ -f "$PARAM_JSON" ]; then
+    if [ -z "$GTF" ]; then
+        GTF="$(python - <<'PY' "$PARAM_JSON"
 import json, sys
 
 def find_key(obj, key):
@@ -64,9 +65,38 @@ with open(sys.argv[1]) as fh:
 print(find_key(data, "gtf"))
 PY
 )"
+    fi
+
+    if [ -z "$GNOMAD_VCF" ]; then
+        GNOMAD_VCF="$(python - <<'PY' "$PARAM_JSON"
+import json, sys
+
+def find_key(obj, key):
+    if isinstance(obj, dict):
+        if key in obj and isinstance(obj[key], str):
+            return obj[key]
+        for v in obj.values():
+            out = find_key(v, key)
+            if out:
+                return out
+    elif isinstance(obj, list):
+        for v in obj:
+            out = find_key(v, key)
+            if out:
+                return out
+    return ""
+
+with open(sys.argv[1]) as fh:
+    data = json.load(fh)
+
+print(find_key(data, "gnomad_vcf"))
+PY
+)"
+    fi
 fi
 
-echo "GTF from parameters.json: $GTF" >&2
+echo "GTF: $GTF" >&2
+echo "GNOMAD_VCF: $GNOMAD_VCF" >&2
 
 if [ -z "$GTF" ]; then
     echo "Missing gtf parameter" >&2
@@ -75,6 +105,21 @@ fi
 
 if [ ! -f "$GTF" ]; then
     echo "Could not find GTF: $GTF" >&2
+    exit 1
+fi
+
+if [ -z "$GNOMAD_VCF" ]; then
+    echo "Missing gnomad_vcf parameter" >&2
+    exit 1
+fi
+
+if [ ! -f "$GNOMAD_VCF" ]; then
+    echo "Could not find gnomAD VCF: $GNOMAD_VCF" >&2
+    exit 1
+fi
+
+if [ ! -f "${GNOMAD_VCF}.tbi" ] && [ ! -f "${GNOMAD_VCF%.gz}.tbi" ] && [ ! -f "${GNOMAD_VCF}.csi" ]; then
+    echo "Could not find index for gnomAD VCF: ${GNOMAD_VCF}.tbi or .csi" >&2
     exit 1
 fi
 
@@ -94,6 +139,7 @@ fi
 
 echo "Using VCF: $VCF" >&2
 echo "Using GTF: $GTF" >&2
+echo "Using gnomAD VCF: $GNOMAD_VCF" >&2
 
 CSV="$OUTDIR/${DATASET}.gnomad_detection.csv"
 
@@ -134,7 +180,7 @@ fi
 bcftools query -f '%CHROM\t%POS0\t%END\n' "$EXONIC_VCF" \
     | sort -T "$WORKDIR" -u > "$POS_BED"
 
-bcftools view -R "$POS_BED" "$GNOMAD_URL" -Oz -o "$GNOMAD_SUB"
+bcftools view -R "$POS_BED" "$GNOMAD_VCF" -Oz -o "$GNOMAD_SUB"
 tabix -f "$GNOMAD_SUB"
 
 OVERLAP=$(bcftools isec -n=2 -w1 "$EXONIC_VCF" "$GNOMAD_SUB" | bcftools view -H | wc -l | awk '{print $1}')
