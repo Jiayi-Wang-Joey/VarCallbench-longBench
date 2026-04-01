@@ -97,16 +97,12 @@ echo "Using GTF: $GTF" >&2
 
 CSV="$OUTDIR/${DATASET}.gnomad_detection.csv"
 
-BASE_TMP="${TMPDIR:-/tmp}"
-if [ ! -d "$BASE_TMP" ]; then
-    BASE_TMP="/tmp"
-fi
-mkdir -p "$BASE_TMP"
-
-WORKDIR="$(mktemp -d "$BASE_TMP/gnomad_detection.XXXXXX")"
-trap 'rm -rf "$WORKDIR"' EXIT
+WORKDIR="$OUTDIR/tmp"
+mkdir -p "$WORKDIR"
+export TMPDIR="$WORKDIR"
 
 echo "WORKDIR: $WORKDIR" >&2
+echo "TMPDIR: $TMPDIR" >&2
 
 EXON_BED="$WORKDIR/exons.merged.bed"
 PASS_VCF="$WORKDIR/${DATASET}.pass.vcf.gz"
@@ -115,7 +111,7 @@ POS_BED="$WORKDIR/${DATASET}.sites.bed"
 GNOMAD_SUB="$WORKDIR/${DATASET}.gnomad.subset.vcf.gz"
 
 awk 'BEGIN{OFS="\t"} $0 !~ /^#/ && $3=="exon" {print $1, $4-1, $5}' "$GTF" \
-    | sort -k1,1 -k2,2n -k3,3n \
+    | sort -T "$WORKDIR" -k1,1 -k2,2n -k3,3n \
     | bedtools merge -i - > "$EXON_BED"
 
 bcftools view -f PASS -Oz -o "$PASS_VCF" "$VCF"
@@ -135,7 +131,8 @@ if [ "$TOTAL" -eq 0 ]; then
     exit 0
 fi
 
-bcftools query -f '%CHROM\t%POS0\t%END\n' "$EXONIC_VCF" | sort -u > "$POS_BED"
+bcftools query -f '%CHROM\t%POS0\t%END\n' "$EXONIC_VCF" \
+    | sort -T "$WORKDIR" -u > "$POS_BED"
 
 bcftools view -R "$POS_BED" "$GNOMAD_URL" -Oz -o "$GNOMAD_SUB"
 tabix -f "$GNOMAD_SUB"
