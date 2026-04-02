@@ -2,6 +2,9 @@
 set -euo pipefail
 
 SOMATIC_VCF=""
+VCF=""
+OUTDIR=""
+NAME=""
 THREADS="1"
 
 echo "ARGS: $*" >&2
@@ -15,6 +18,18 @@ while [ $# -gt 0 ]; do
             SOMATIC_VCF="$2"
             shift 2
             ;;
+        --variant.vcf|--variant_vcf|--variant-vcf)
+            VCF="$2"
+            shift 2
+            ;;
+        --output_dir|--output-dir|--output.dir)
+            OUTDIR="$2"
+            shift 2
+            ;;
+        --name)
+            NAME="$2"
+            shift 2
+            ;;
         --threads)
             THREADS="$2"
             shift 2
@@ -26,11 +41,13 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-STDERR_PATH="$(readlink -f /proc/self/fd/2)"
-OUTDIR="$(dirname "$STDERR_PATH")"
-PARAM_JSON="$OUTDIR/parameters.json"
+if [ -z "$OUTDIR" ]; then
+    STDERR_PATH="$(readlink -f /proc/self/fd/2)"
+    OUTDIR="$(dirname "$STDERR_PATH")"
+fi
+mkdir -p "$OUTDIR"
 
-echo "STDERR_PATH: $STDERR_PATH" >&2
+PARAM_JSON="$OUTDIR/parameters.json"
 echo "OUTDIR: $OUTDIR" >&2
 echo "PARAM_JSON: $PARAM_JSON" >&2
 
@@ -61,7 +78,36 @@ PY
 )"
 fi
 
+if [ -z "$VCF" ] && [ -f "$PARAM_JSON" ]; then
+    VCF="$(python - <<'PY' "$PARAM_JSON"
+import json, sys
+
+def find_key(obj, key):
+    if isinstance(obj, dict):
+        if key in obj and isinstance(obj[key], str):
+            return obj[key]
+        for v in obj.values():
+            out = find_key(v, key)
+            if out:
+                return out
+    elif isinstance(obj, list):
+        for v in obj:
+            out = find_key(v, key)
+            if out:
+                return out
+    return ""
+
+with open(sys.argv[1]) as fh:
+    data = json.load(fh)
+
+print(find_key(data, "variant.vcf"))
+PY
+)"
+fi
+
+echo "VCF: $VCF" >&2
 echo "SOMATIC_VCF: $SOMATIC_VCF" >&2
+echo "NAME: $NAME" >&2
 
 if [ -z "$SOMATIC_VCF" ]; then
     echo "Missing somatic_vcf parameter" >&2
@@ -78,31 +124,34 @@ if [ ! -f "${SOMATIC_VCF}.tbi" ] && [ ! -f "${SOMATIC_VCF}.csi" ]; then
     exit 1
 fi
 
-DATASET="$(printf '%s\n' "$STDERR_PATH" | sed -n 's#.*out/rawdata/\([^/]*\)/.*#\1#p')"
-if [ -z "${DATASET:-}" ]; then
-    echo "Could not infer dataset from stderr path" >&2
+if [ -z "$VCF" ]; then
+    echo "Missing variant VCF input" >&2
     exit 1
 fi
-
-VC_DIR="$(printf '%s\n' "$STDERR_PATH" | sed 's#/somatic_detection/.*##')"
-VCF="${VC_DIR}/${DATASET}.vcf.gz"
 
 if [ ! -f "$VCF" ]; then
     echo "Could not find VCF: $VCF" >&2
     exit 1
 fi
 
-echo "Using VCF: $VCF" >&2
-echo "Using somatic truth VCF: $SOMATIC_VCF" >&2
+if [ -n "$NAME" ]; then
+    DATASET="$NAME"
+else
+    DATASET="$(basename "$VCF")"
+    DATASET="${DATASET%.vcf.gz}"
+    DATASET="${DATASET%.vcf}"
+fi
+
+echo "DATASET: $DATASET" >&2
 
 CSV_OUT="$OUTDIR/${DATASET}.somatic_detection.csv"
-
 WORKDIR="$OUTDIR/tmp"
 mkdir -p "$WORKDIR"
 export TMPDIR="$WORKDIR"
 
 echo "WORKDIR: $WORKDIR" >&2
 echo "TMPDIR: $TMPDIR" >&2
+echo "CSV_OUT: $CSV_OUT" >&2
 
 TRUTH_TSV="$WORKDIR/${DATASET}.somatic_truth.tsv"
 CALLS_TSV="$WORKDIR/${DATASET}.calls.tsv"
@@ -133,6 +182,11 @@ RATE=$(awk -v d="$DETECTED" -v t="$TOTAL" 'BEGIN{printf "%.6f", (t>0 ? d/t : 0)}
     echo "dataset_id,total_somatic_variants,detected_somatic_variants,detection_rate"
     echo "${DATASET},${TOTAL},${DETECTED},${RATE}"
 } > "$CSV_OUT"
+
+if [ ! -f "$CSV_OUT" ]; then
+    echo "Failed to create output CSV: $CSV_OUT" >&2
+    exit 1
+fi
 
 echo "Wrote: $CSV_OUT" >&2
 ls -lh "$OUTDIR" >&2
