@@ -19,9 +19,11 @@ while [ $# -gt 0 ]; do
             THREADS="$2"
             shift 2
             ;;
+        --output_dir|--output-dir|--output.dir|--name)
+            shift 2
+            ;;
         *)
-            echo "Unknown argument: $1" >&2
-            exit 1
+            shift
             ;;
     esac
 done

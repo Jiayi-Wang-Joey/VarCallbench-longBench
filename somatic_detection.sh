@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOMATIC_VCF=""
-VCF=""
-OUTDIR=""
-NAME=""
+BAM=""
 THREADS="1"
 
 echo "ARGS: $*" >&2
@@ -14,20 +11,8 @@ while [ $# -gt 0 ]; do
         --task)
             shift 2
             ;;
-        --somatic_vcf|--somatic-vcf)
-            SOMATIC_VCF="$2"
-            shift 2
-            ;;
-        --variant.vcf|--variant_vcf|--variant-vcf)
-            VCF="$2"
-            shift 2
-            ;;
-        --output_dir|--output-dir|--output.dir)
-            OUTDIR="$2"
-            shift 2
-            ;;
-        --name)
-            NAME="$2"
+        --align.bam|--align_bam|--align-bam|--bam)
+            BAM="$2"
             shift 2
             ;;
         --threads)
@@ -41,152 +26,61 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -z "$OUTDIR" ]; then
-    STDERR_PATH="$(readlink -f /proc/self/fd/2)"
-    OUTDIR="$(dirname "$STDERR_PATH")"
-fi
-mkdir -p "$OUTDIR"
+STDERR_PATH="$(readlink -f /proc/self/fd/2)"
+OUTDIR="$(dirname "$STDERR_PATH")"
 
-PARAM_JSON="$OUTDIR/parameters.json"
+echo "STDERR_PATH: $STDERR_PATH" >&2
 echo "OUTDIR: $OUTDIR" >&2
-echo "PARAM_JSON: $PARAM_JSON" >&2
 
-if [ -z "$SOMATIC_VCF" ] && [ -f "$PARAM_JSON" ]; then
-    SOMATIC_VCF="$(python - <<'PY' "$PARAM_JSON"
-import json, sys
+if [ -z "$BAM" ]; then
+    DATASET="$(printf '%s\n' "$STDERR_PATH" | sed -n 's#.*out/rawdata/\([^/]*\)/.*#\1#p')"
+    if [ -z "${DATASET:-}" ]; then
+        echo "Could not infer dataset from stderr path" >&2
+        exit 1
+    fi
 
-def find_key(obj, key):
-    if isinstance(obj, dict):
-        if key in obj and isinstance(obj[key], str):
-            return obj[key]
-        for v in obj.values():
-            out = find_key(v, key)
-            if out:
-                return out
-    elif isinstance(obj, list):
-        for v in obj:
-            out = find_key(v, key)
-            if out:
-                return out
-    return ""
-
-with open(sys.argv[1]) as fh:
-    data = json.load(fh)
-
-print(find_key(data, "somatic_vcf"))
-PY
-)"
+    ALIGN_DIR="$(printf '%s\n' "$STDERR_PATH" | sed 's#/alignment_qc/.*##')"
+    BAM="${ALIGN_DIR}/${DATASET}.aligned.bam"
 fi
 
-if [ -z "$VCF" ] && [ -f "$PARAM_JSON" ]; then
-    VCF="$(python - <<'PY' "$PARAM_JSON"
-import json, sys
-
-def find_key(obj, key):
-    if isinstance(obj, dict):
-        if key in obj and isinstance(obj[key], str):
-            return obj[key]
-        for v in obj.values():
-            out = find_key(v, key)
-            if out:
-                return out
-    elif isinstance(obj, list):
-        for v in obj:
-            out = find_key(v, key)
-            if out:
-                return out
-    return ""
-
-with open(sys.argv[1]) as fh:
-    data = json.load(fh)
-
-print(find_key(data, "variant.vcf"))
-PY
-)"
-fi
-
-echo "VCF: $VCF" >&2
-echo "SOMATIC_VCF: $SOMATIC_VCF" >&2
-echo "NAME: $NAME" >&2
-
-if [ -z "$SOMATIC_VCF" ]; then
-    echo "Missing somatic_vcf parameter" >&2
+if [ ! -f "$BAM" ]; then
+    echo "Could not find BAM: $BAM" >&2
     exit 1
 fi
 
-if [ ! -f "$SOMATIC_VCF" ]; then
-    echo "Could not find somatic VCF: $SOMATIC_VCF" >&2
-    exit 1
-fi
+echo "Using BAM: $BAM" >&2
 
-if [ ! -f "${SOMATIC_VCF}.tbi" ] && [ ! -f "${SOMATIC_VCF}.csi" ]; then
-    echo "Could not find index for somatic VCF: ${SOMATIC_VCF}.tbi or .csi" >&2
-    exit 1
-fi
+DATASET="$(basename "$BAM")"
+DATASET="${DATASET%.aligned.bam}"
+DATASET="${DATASET%.bam}"
 
-if [ -z "$VCF" ]; then
-    echo "Missing variant VCF input" >&2
-    exit 1
-fi
+STATS="$OUTDIR/${DATASET}.samtools.stats"
+CSV="$OUTDIR/${DATASET}.alignment_qc.csv"
 
-if [ ! -f "$VCF" ]; then
-    echo "Could not find VCF: $VCF" >&2
-    exit 1
-fi
+samtools stats -@ "$THREADS" "$BAM" > "$STATS"
 
-if [ -n "$NAME" ]; then
-    DATASET="$NAME"
-else
-    DATASET="$(basename "$VCF")"
-    DATASET="${DATASET%.vcf.gz}"
-    DATASET="${DATASET%.vcf}"
-fi
+awk -F '\t' -v bam="$BAM" -v dataset="$DATASET" 'BEGIN {
+    OFS=","
+    print "dataset_id,bam,total_sequences,mapped_reads,mapping_rate_pct,average_length,average_quality,error_rate"
+}
+$1 == "SN" {
+    gsub(":$", "", $2)
+    val[$2] = $3
+}
+END {
+    total = val["raw total sequences"]
+    mapped = val["reads mapped"]
+    avg_len = val["average length"]
+    avg_qual = val["average quality"]
+    err = val["error rate"]
 
-echo "DATASET: $DATASET" >&2
+    rate = 0
+    if (total > 0) {
+        rate = 100 * mapped / total
+    }
 
-CSV_OUT="$OUTDIR/${DATASET}.somatic_detection.csv"
-WORKDIR="$OUTDIR/tmp"
-mkdir -p "$WORKDIR"
-export TMPDIR="$WORKDIR"
+    print dataset, bam, total, mapped, rate, avg_len, avg_qual, err
+}' "$STATS" > "$CSV"
 
-echo "WORKDIR: $WORKDIR" >&2
-echo "TMPDIR: $TMPDIR" >&2
-echo "CSV_OUT: $CSV_OUT" >&2
-
-TRUTH_TSV="$WORKDIR/${DATASET}.somatic_truth.tsv"
-CALLS_TSV="$WORKDIR/${DATASET}.calls.tsv"
-TRUTH_KEY="$WORKDIR/${DATASET}.somatic_truth.key"
-CALLS_KEY="$WORKDIR/${DATASET}.calls.key"
-MATCH_KEY="$WORKDIR/${DATASET}.matches.key"
-
-bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\n' "$SOMATIC_VCF" \
-    | sort -T "$WORKDIR" -u > "$TRUTH_TSV"
-
-bcftools view -f PASS "$VCF" \
-    | bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\n' \
-    | sort -T "$WORKDIR" -u > "$CALLS_TSV"
-
-awk '{print $1":"$2":"$3":"$4}' "$TRUTH_TSV" \
-    | sort -T "$WORKDIR" -u > "$TRUTH_KEY"
-
-awk '{print $1":"$2":"$3":"$4}' "$CALLS_TSV" \
-    | sort -T "$WORKDIR" -u > "$CALLS_KEY"
-
-comm -12 "$TRUTH_KEY" "$CALLS_KEY" > "$MATCH_KEY"
-
-TOTAL=$(wc -l < "$TRUTH_KEY" | awk '{print $1}')
-DETECTED=$(wc -l < "$MATCH_KEY" | awk '{print $1}')
-RATE=$(awk -v d="$DETECTED" -v t="$TOTAL" 'BEGIN{printf "%.6f", (t>0 ? d/t : 0)}')
-
-{
-    echo "dataset_id,total_somatic_variants,detected_somatic_variants,detection_rate"
-    echo "${DATASET},${TOTAL},${DETECTED},${RATE}"
-} > "$CSV_OUT"
-
-if [ ! -f "$CSV_OUT" ]; then
-    echo "Failed to create output CSV: $CSV_OUT" >&2
-    exit 1
-fi
-
-echo "Wrote: $CSV_OUT" >&2
+echo "Wrote: $CSV" >&2
 ls -lh "$OUTDIR" >&2
