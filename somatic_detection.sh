@@ -1,25 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+TASK=""
+OUTDIR=""
+DATASET=""
 BAM=""
+VCF=""
+SOMATIC_VCF=""
+REF=""
 THREADS="1"
 
 echo "ARGS: $*" >&2
-
-OUTDIR=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --task)
             TASK="$2"
-            shift 2
-            ;;
-        --align.bam|--align_bam|--align-bam|--bam)
-            BAM="$2"
-            shift 2
-            ;;
-        --threads)
-            THREADS="$2"
             shift 2
             ;;
         --output_dir)
@@ -30,12 +26,24 @@ while [ $# -gt 0 ]; do
             DATASET="$2"
             shift 2
             ;;
+        --align.bam|--align_bam|--align-bam|--bam)
+            BAM="$2"
+            shift 2
+            ;;
         --variant.vcf|--variant_vcf|--variant-vcf)
             VCF="$2"
             shift 2
             ;;
         --somatic_vcf)
             SOMATIC_VCF="$2"
+            shift 2
+            ;;
+        --reference_genome)
+            REF="$2"
+            shift 2
+            ;;
+        --threads)
+            THREADS="$2"
             shift 2
             ;;
         *)
@@ -45,61 +53,115 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-STDERR_PATH="$(readlink -f /proc/self/fd/2)"
-OUTDIR="$(dirname "$STDERR_PATH")"
-
-echo "STDERR_PATH: $STDERR_PATH" >&2
-echo "OUTDIR: $OUTDIR" >&2
-
-if [ -z "$BAM" ]; then
-    DATASET="$(printf '%s\n' "$STDERR_PATH" | sed -n 's#.*out/rawdata/\([^/]*\)/.*#\1#p')"
-    if [ -z "${DATASET:-}" ]; then
-        echo "Could not infer dataset from stderr path" >&2
-        exit 1
-    fi
-
-    ALIGN_DIR="$(printf '%s\n' "$STDERR_PATH" | sed 's#/alignment_qc/.*##')"
-    BAM="${ALIGN_DIR}/${DATASET}.aligned.bam"
-fi
-
-if [ ! -f "$BAM" ]; then
-    echo "Could not find BAM: $BAM" >&2
+if [ -z "$TASK" ]; then
+    echo "Missing required argument: --task" >&2
     exit 1
 fi
 
-echo "Using BAM: $BAM" >&2
+if [ -z "$OUTDIR" ]; then
+    echo "Missing required argument: --output_dir" >&2
+    exit 1
+fi
 
-DATASET="$(basename "$BAM")"
-DATASET="${DATASET%.aligned.bam}"
-DATASET="${DATASET%.bam}"
+mkdir -p "$OUTDIR"
 
-STATS="$OUTDIR/${DATASET}.samtools.stats"
-CSV="$OUTDIR/${DATASET}.alignment_qc.csv"
+echo "TASK: $TASK" >&2
+echo "DATASET: ${DATASET:-NA}" >&2
+echo "OUTDIR: $OUTDIR" >&2
+echo "THREADS: $THREADS" >&2
 
-samtools stats -@ "$THREADS" "$BAM" > "$STATS"
+case "$TASK" in
+    align)
+        if [ -z "$BAM" ]; then
+            echo "Missing required BAM for task '$TASK': --align.bam" >&2
+            exit 1
+        fi
 
-awk -F '\t' -v bam="$BAM" -v dataset="$DATASET" 'BEGIN {
-    OFS=","
-    print "dataset_id,bam,total_sequences,mapped_reads,mapping_rate_pct,average_length,average_quality,error_rate"
-}
-$1 == "SN" {
-    gsub(":$", "", $2)
-    val[$2] = $3
-}
-END {
-    total = val["raw total sequences"]
-    mapped = val["reads mapped"]
-    avg_len = val["average length"]
-    avg_qual = val["average quality"]
-    err = val["error rate"]
+        echo "BAM: $BAM" >&2
+        echo "REF: ${REF:-NA}" >&2
 
-    rate = 0
-    if (total > 0) {
-        rate = 100 * mapped / total
-    }
+        exec bash "$(dirname "$0")/align.sh" \
+            --name "$DATASET" \
+            --bam "$BAM" \
+            --reference_genome "$REF" \
+            --threads "$THREADS" \
+            --output_dir "$OUTDIR"
+        ;;
 
-    print dataset, bam, total, mapped, rate, avg_len, avg_qual, err
-}' "$STATS" > "$CSV"
+    clair3_rna)
+        if [ -z "$BAM" ]; then
+            echo "Missing required BAM for task '$TASK': --align.bam" >&2
+            exit 1
+        fi
 
-echo "Wrote: $CSV" >&2
-ls -lh "$OUTDIR" >&2
+        echo "BAM: $BAM" >&2
+        echo "REF: ${REF:-NA}" >&2
+
+        exec bash "$(dirname "$0")/clair3_rna.sh" \
+            --name "$DATASET" \
+            --bam "$BAM" \
+            --reference_genome "$REF" \
+            --threads "$THREADS" \
+            --output_dir "$OUTDIR"
+        ;;
+
+    deep_variant|deepvariant)
+        if [ -z "$BAM" ]; then
+            echo "Missing required BAM for task '$TASK': --align.bam" >&2
+            exit 1
+        fi
+
+        echo "BAM: $BAM" >&2
+        echo "REF: ${REF:-NA}" >&2
+
+        exec bash "$(dirname "$0")/deep_variant.sh" \
+            --name "$DATASET" \
+            --bam "$BAM" \
+            --reference_genome "$REF" \
+            --threads "$THREADS" \
+            --output_dir "$OUTDIR"
+        ;;
+
+    longcallR|longcallr)
+        if [ -z "$BAM" ]; then
+            echo "Missing required BAM for task '$TASK': --align.bam" >&2
+            exit 1
+        fi
+
+        echo "BAM: $BAM" >&2
+        echo "REF: ${REF:-NA}" >&2
+
+        exec bash "$(dirname "$0")/longcallR.sh" \
+            --name "$DATASET" \
+            --bam "$BAM" \
+            --reference_genome "$REF" \
+            --threads "$THREADS" \
+            --output_dir "$OUTDIR"
+        ;;
+
+    somatic_detection)
+        if [ -z "$VCF" ]; then
+            echo "Missing required VCF for task '$TASK': --variant.vcf" >&2
+            exit 1
+        fi
+
+        if [ -z "$SOMATIC_VCF" ]; then
+            echo "Missing required somatic truth VCF for task '$TASK': --somatic_vcf" >&2
+            exit 1
+        fi
+
+        echo "VCF: $VCF" >&2
+        echo "SOMATIC_VCF: $SOMATIC_VCF" >&2
+
+        exec Rscript "$(dirname "$0")/somatic_detection.R" \
+            --output_dir "$OUTDIR" \
+            --variant.vcf "$VCF" \
+            --somatic_vcf "$SOMATIC_VCF" \
+            --name "$DATASET"
+        ;;
+
+    *)
+        echo "ERROR: unknown task: $TASK" >&2
+        exit 1
+        ;;
+esac
