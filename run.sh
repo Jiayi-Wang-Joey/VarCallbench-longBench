@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 set -eu
 
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -18,7 +18,7 @@ case "$TASK" in
     clair3_rna)
         exec "$DIR/clair3_rna.sh" "$@"
         ;;
-    deep_variant)
+    deep_variant|deepvariant)
         exec "$DIR/deep_variant.sh" "$@"
         ;;
     longcallR)
@@ -64,7 +64,7 @@ case "$TASK" in
             esac
         done
 
-        # new fallback: Omnibenchmark rawdata jobs may pass no args at all
+        # Omnibenchmark rawdata jobs may pass no args at all
         STDERR_PATH="$(readlink -f /proc/self/fd/2 2>/dev/null || true)"
         case "$STDERR_PATH" in
             *"/out/rawdata/"*)

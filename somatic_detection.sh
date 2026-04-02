@@ -4,10 +4,8 @@ set -euo pipefail
 TASK=""
 OUTDIR=""
 DATASET=""
-BAM=""
 VCF=""
 SOMATIC_VCF=""
-REF=""
 THREADS="1"
 
 echo "ARGS: $*" >&2
@@ -26,20 +24,12 @@ while [ $# -gt 0 ]; do
             DATASET="$2"
             shift 2
             ;;
-        --align.bam|--align_bam|--align-bam|--bam)
-            BAM="$2"
-            shift 2
-            ;;
         --variant.vcf|--variant_vcf|--variant-vcf)
             VCF="$2"
             shift 2
             ;;
         --somatic_vcf)
             SOMATIC_VCF="$2"
-            shift 2
-            ;;
-        --reference_genome)
-            REF="$2"
             shift 2
             ;;
         --threads)
@@ -53,115 +43,94 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -z "$TASK" ]; then
-    echo "Missing required argument: --task" >&2
-    exit 1
-fi
-
 if [ -z "$OUTDIR" ]; then
     echo "Missing required argument: --output_dir" >&2
     exit 1
 fi
 
+if [ -z "$DATASET" ]; then
+    echo "Missing required argument: --name/--dataset_id" >&2
+    exit 1
+fi
+
+if [ -z "$VCF" ]; then
+    echo "Missing required argument: --variant.vcf" >&2
+    exit 1
+fi
+
+if [ -z "$SOMATIC_VCF" ]; then
+    BASE_DATASET="${DATASET%%_*}"
+    SOMATIC_VCF="/home/jiayiwang/VarCallbench/data/somatic/${BASE_DATASET}.vcf.gz"
+fi
+
+if [ ! -f "$VCF" ]; then
+    echo "Variant VCF not found: $VCF" >&2
+    exit 1
+fi
+
+if [ ! -f "$SOMATIC_VCF" ]; then
+    echo "Somatic truth VCF not found: $SOMATIC_VCF" >&2
+    exit 1
+fi
+
+command -v bcftools >/dev/null 2>&1 || {
+    echo "bcftools not found in PATH" >&2
+    exit 1
+}
+
 mkdir -p "$OUTDIR"
 
-echo "TASK: $TASK" >&2
-echo "DATASET: ${DATASET:-NA}" >&2
+echo "TASK: ${TASK:-somatic_detection}" >&2
+echo "DATASET: $DATASET" >&2
 echo "OUTDIR: $OUTDIR" >&2
 echo "THREADS: $THREADS" >&2
+echo "VCF: $VCF" >&2
+echo "SOMATIC_VCF: $SOMATIC_VCF" >&2
 
-case "$TASK" in
-    align)
-        if [ -z "$BAM" ]; then
-            echo "Missing required BAM for task '$TASK': --align.bam" >&2
-            exit 1
-        fi
+TMPDIR="$OUTDIR/isec_tmp"
+rm -rf "$TMPDIR"
+mkdir -p "$TMPDIR"
 
-        echo "BAM: $BAM" >&2
-        echo "REF: ${REF:-NA}" >&2
+bcftools isec \
+    -p "$TMPDIR" \
+    "$VCF" \
+    "$SOMATIC_VCF"
 
-        exec bash "$(dirname "$0")/align.sh" \
-            --name "$DATASET" \
-            --bam "$BAM" \
-            --reference_genome "$REF" \
-            --threads "$THREADS" \
-            --output_dir "$OUTDIR"
-        ;;
+DETECTED=0
+MISSED=0
+TOTAL_TRUTH=0
+UNMATCHED_CALLS=0
 
-    clair3_rna)
-        if [ -z "$BAM" ]; then
-            echo "Missing required BAM for task '$TASK': --align.bam" >&2
-            exit 1
-        fi
+if [ -f "$TMPDIR/0002.vcf" ]; then
+    DETECTED=$(bcftools view -H "$TMPDIR/0002.vcf" | wc -l | tr -d ' ')
+fi
 
-        echo "BAM: $BAM" >&2
-        echo "REF: ${REF:-NA}" >&2
+if [ -f "$TMPDIR/0001.vcf" ]; then
+    MISSED=$(bcftools view -H "$TMPDIR/0001.vcf" | wc -l | tr -d ' ')
+fi
 
-        exec bash "$(dirname "$0")/clair3_rna.sh" \
-            --name "$DATASET" \
-            --bam "$BAM" \
-            --reference_genome "$REF" \
-            --threads "$THREADS" \
-            --output_dir "$OUTDIR"
-        ;;
+if [ -f "$TMPDIR/0000.vcf" ]; then
+    UNMATCHED_CALLS=$(bcftools view -H "$TMPDIR/0000.vcf" | wc -l | tr -d ' ')
+fi
 
-    deep_variant|deepvariant)
-        if [ -z "$BAM" ]; then
-            echo "Missing required BAM for task '$TASK': --align.bam" >&2
-            exit 1
-        fi
+TOTAL_TRUTH=$((DETECTED + MISSED))
 
-        echo "BAM: $BAM" >&2
-        echo "REF: ${REF:-NA}" >&2
+if [ "$TOTAL_TRUTH" -gt 0 ]; then
+    DETECTION_RATE=$(awk -v d="$DETECTED" -v t="$TOTAL_TRUTH" 'BEGIN{printf "%.6f", d/t}')
+else
+    DETECTION_RATE="NA"
+fi
 
-        exec bash "$(dirname "$0")/deep_variant.sh" \
-            --name "$DATASET" \
-            --bam "$BAM" \
-            --reference_genome "$REF" \
-            --threads "$THREADS" \
-            --output_dir "$OUTDIR"
-        ;;
+OUTFILE="$OUTDIR/${DATASET}.somatic_detection.csv"
 
-    longcallR|longcallr)
-        if [ -z "$BAM" ]; then
-            echo "Missing required BAM for task '$TASK': --align.bam" >&2
-            exit 1
-        fi
+{
+    echo "dataset,detected,total_truth,missed,detection_rate,unmatched_calls"
+    echo "${DATASET},${DETECTED},${TOTAL_TRUTH},${MISSED},${DETECTION_RATE},${UNMATCHED_CALLS}"
+} > "$OUTFILE"
 
-        echo "BAM: $BAM" >&2
-        echo "REF: ${REF:-NA}" >&2
-
-        exec bash "$(dirname "$0")/longcallR.sh" \
-            --name "$DATASET" \
-            --bam "$BAM" \
-            --reference_genome "$REF" \
-            --threads "$THREADS" \
-            --output_dir "$OUTDIR"
-        ;;
-
-    somatic_detection)
-        if [ -z "$VCF" ]; then
-            echo "Missing required VCF for task '$TASK': --variant.vcf" >&2
-            exit 1
-        fi
-
-        if [ -z "$SOMATIC_VCF" ]; then
-            echo "Missing required somatic truth VCF for task '$TASK': --somatic_vcf" >&2
-            exit 1
-        fi
-
-        echo "VCF: $VCF" >&2
-        echo "SOMATIC_VCF: $SOMATIC_VCF" >&2
-
-        exec Rscript "$(dirname "$0")/somatic_detection.R" \
-            --output_dir "$OUTDIR" \
-            --variant.vcf "$VCF" \
-            --somatic_vcf "$SOMATIC_VCF" \
-            --name "$DATASET"
-        ;;
-
-    *)
-        echo "ERROR: unknown task: $TASK" >&2
-        exit 1
-        ;;
-esac
+echo "DETECTED: $DETECTED" >&2
+echo "MISSED: $MISSED" >&2
+echo "TOTAL_TRUTH: $TOTAL_TRUTH" >&2
+echo "DETECTION_RATE: $DETECTION_RATE" >&2
+echo "UNMATCHED_CALLS: $UNMATCHED_CALLS" >&2
+echo "Wrote: $OUTFILE" >&2
