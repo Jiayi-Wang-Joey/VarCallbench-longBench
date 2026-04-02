@@ -28,8 +28,8 @@ while [ $# -gt 0 ]; do
             VCF="$2"
             shift 2
             ;;
-        --somatic_vcf)
-            SOMATIC_VCF="$2"
+        --somatic_dir)
+            SOMATIC_DIR="$2"
             shift 2
             ;;
         --threads)
@@ -59,8 +59,10 @@ if [ -z "$VCF" ]; then
 fi
 
 if [ -z "$SOMATIC_VCF" ]; then
+    [ -n "$SOMATIC_DIR" ] || { echo "Missing --somatic_dir or --somatic_vcf" >&2; exit 1; }
+
     BASE_DATASET="${DATASET%%_*}"
-    SOMATIC_VCF="/home/jiayiwang/VarCallbench/data/somatic/${BASE_DATASET}.vcf.gz"
+    SOMATIC_VCF="${SOMATIC_DIR}/${BASE_DATASET}.vcf.gz"
 fi
 
 if [ ! -f "$VCF" ]; then
