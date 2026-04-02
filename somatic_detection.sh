@@ -6,9 +6,12 @@ THREADS="1"
 
 echo "ARGS: $*" >&2
 
+OUTDIR=""
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --task)
+            TASK="$2"
             shift 2
             ;;
         --align.bam|--align_bam|--align-bam|--bam)
@@ -17,6 +20,22 @@ while [ $# -gt 0 ]; do
             ;;
         --threads)
             THREADS="$2"
+            shift 2
+            ;;
+        --output_dir)
+            OUTDIR="$2"
+            shift 2
+            ;;
+        --name|--dataset_id)
+            DATASET="$2"
+            shift 2
+            ;;
+        --variant.vcf|--variant_vcf|--variant-vcf)
+            VCF="$2"
+            shift 2
+            ;;
+        --somatic_vcf)
+            SOMATIC_VCF="$2"
             shift 2
             ;;
         *)
