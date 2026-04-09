@@ -39,6 +39,9 @@ case "$TASK" in
     somatic_detection)
         exec "$DIR/somatic_detection.sh" "$@"
         ;;
+    filter_variants)
+        bash "$(dirname "$0")/filter_variants.sh" "$@"
+        ;;
     align)
         exec "$DIR/align.sh" "$@"
         ;;
