@@ -92,7 +92,7 @@ echo "SOMATIC_VCF: $SOMATIC_VCF" >&2
 TMPDIR="$OUTDIR/isec_tmp"
 rm -rf "$TMPDIR"
 mkdir -p "$TMPDIR"
-
+tabix "$VCF"
 bcftools isec \
     -p "$TMPDIR" \
     "$VCF" \

@@ -14,8 +14,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --name) DATASET="$2"; shift 2 ;;
         --dataset_id) DATASET="$2"; shift 2 ;;
-        --align.bam) BAM="$2"; shift 2 ;;
-        --bam) BAM="$2"; shift 2 ;;
+        --align.bam|--bam) BAM="$2"; shift 2 ;;
         --reference_genome) REF="$2"; shift 2 ;;
         --threads) THREADS="$2"; shift 2 ;;
         --output_dir) OUTDIR="$2"; shift 2 ;;
@@ -47,7 +46,6 @@ command -v samtools >/dev/null 2>&1 || { echo "samtools not found in PATH" >&2; 
 command -v bcftools >/dev/null 2>&1 || { echo "bcftools not found in PATH" >&2; exit 2; }
 command -v tabix >/dev/null 2>&1 || { echo "tabix not found in PATH" >&2; exit 2; }
 
-# Resolve to absolute paths to avoid index lookup failures in downstream tools.
 BAM="$(readlink -f "${BAM}")"
 REF="$(readlink -f "${REF}")"
 mkdir -p "${OUTDIR}"
@@ -91,7 +89,6 @@ echo "MIN_BASEQ_FLAG=${MIN_BASEQ_FLAG}" >&2
 
 FINAL_VCF_GZ="${OUTDIR}/${DATASET}.vcf.gz"
 
-# Ensure BAM index exists and is usable.
 if ! samtools idxstats "${BAM}" > "${LOGDIR}/samtools_idxstats.initial.txt" 2> "${LOGDIR}/samtools_idxstats.initial.log"; then
     echo "BAM index missing or unusable for: ${BAM}" >&2
     echo "Attempting to create BAM index with samtools index..." >&2
@@ -99,7 +96,6 @@ if ! samtools idxstats "${BAM}" > "${LOGDIR}/samtools_idxstats.initial.txt" 2> "
     samtools index -@ "${THREADS}" "${BAM}" > "${LOGDIR}/samtools_index.log" 2>&1 || {
         rc=$?
         echo "samtools index failed with exit code ${rc}" >&2
-        echo "See log: ${LOGDIR}/samtools_index.log" >&2
         tail -n 50 "${LOGDIR}/samtools_index.log" >&2 || true
         exit "${rc}"
     }
@@ -107,13 +103,11 @@ if ! samtools idxstats "${BAM}" > "${LOGDIR}/samtools_idxstats.initial.txt" 2> "
     samtools idxstats "${BAM}" > "${LOGDIR}/samtools_idxstats.after_index.txt" 2> "${LOGDIR}/samtools_idxstats.after_index.log" || {
         rc=$?
         echo "samtools idxstats still failed after indexing for BAM: ${BAM}" >&2
-        echo "See log: ${LOGDIR}/samtools_idxstats.after_index.log" >&2
         tail -n 50 "${LOGDIR}/samtools_idxstats.after_index.log" >&2 || true
         exit "${rc}"
     }
 fi
 
-# Keep only primary chromosomes with mapped reads.
 mapfile -t CHRS < <(
     samtools idxstats "${BAM}" 2> "${LOGDIR}/samtools_idxstats.contigs.log" \
     | awk '$3 > 0 {print $1}' \
@@ -125,8 +119,6 @@ mapfile -t CHRS < <(
     exit 2
 }
 
-# Optional debug restriction:
-# DEBUG_CHR=chr22 bash longcallR_nn.sh ...
 if [ -n "${DEBUG_CHR:-}" ]; then
     echo "DEBUG_CHR set: restricting to ${DEBUG_CHR}" >&2
     found=0
@@ -150,26 +142,26 @@ printf '%s\n' "${CHRS[@]}" >&2
 VCF_LIST="${TMPDIR}/vcf.list"
 : > "${VCF_LIST}"
 
-for CHR in "${CHRS[@]}"; do
-    echo "=== Processing ${CHR} ===" >&2
+process_chr() {
+    local CHR="$1"
+    local CHR_DATA_DIR="${DATADIR}/${CHR}"
+    local CHR_VCF="${VCFDIR}/${CHR}.vcf"
+    local DP_LOG="${LOGDIR}/${CHR}.longcallR_dp.log"
+    local NN_LOG="${LOGDIR}/${CHR}.longcallR_nn.log"
 
-    CHR_DATA_DIR="${DATADIR}/${CHR}"
-    CHR_VCF="${VCFDIR}/${CHR}.vcf"
-    DP_LOG="${LOGDIR}/${CHR}.longcallR_dp.log"
-    NN_LOG="${LOGDIR}/${CHR}.longcallR_nn.log"
+    echo "=== Processing ${CHR} ===" >&2
 
     mkdir -p "${CHR_DATA_DIR}"
     rm -f "${CHR_VCF}"
 
     if [ -f "${BAM}.bai" ]; then
-        echo "Using BAM index: ${BAM}.bai" >&2
+        :
     elif [ -f "${BAM%.bam}.bai" ]; then
-        echo "Using BAM index: ${BAM%.bam}.bai" >&2
+        :
     elif [ -f "${BAM}.csi" ]; then
-        echo "Using BAM index: ${BAM}.csi" >&2
+        :
     else
-        echo "No BAM index found right before longcallR_dp for ${BAM}" >&2
-        ls -lh "$(dirname "${BAM}")" >&2 || true
+        echo "[${CHR}] No BAM index found for ${BAM}" >&2
         exit 2
     fi
 
@@ -183,13 +175,7 @@ for CHR in "${CHRS[@]}"; do
             --contigs "${CHR}" \
             --output "${CHR_DATA_DIR}" \
             --min-baseq 10 \
-            > "${DP_LOG}" 2>&1 || {
-                rc=$?
-                echo "[${CHR}] longcallR_dp failed with exit code ${rc}" >&2
-                echo "[${CHR}] See log: ${DP_LOG}" >&2
-                tail -n 50 "${DP_LOG}" >&2 || true
-                exit "${rc}"
-            }
+            > "${DP_LOG}" 2>&1
     else
         /usr/local/bin/longcallR_dp \
             --mode predict \
@@ -198,13 +184,7 @@ for CHR in "${CHRS[@]}"; do
             --threads 1 \
             --contigs "${CHR}" \
             --output "${CHR_DATA_DIR}" \
-            > "${DP_LOG}" 2>&1 || {
-                rc=$?
-                echo "[${CHR}] longcallR_dp failed with exit code ${rc}" >&2
-                echo "[${CHR}] See log: ${DP_LOG}" >&2
-                tail -n 50 "${DP_LOG}" >&2 || true
-                exit "${rc}"
-            }
+            > "${DP_LOG}" 2>&1
     fi
 
     echo "[${CHR}] longcallR_nn call" >&2
@@ -217,25 +197,64 @@ for CHR in "${CHRS[@]}"; do
         --no_cuda \
         -max_depth 200 \
         -batch_size 256 \
-        > "${NN_LOG}" 2>&1 || {
-            rc=$?
-            echo "[${CHR}] longcallR_nn failed with exit code ${rc}" >&2
-            echo "[${CHR}] See log: ${NN_LOG}" >&2
-            tail -n 50 "${NN_LOG}" >&2 || true
-            exit "${rc}"
-        }
+        > "${NN_LOG}" 2>&1
 
     [ -f "${CHR_VCF}" ] || {
-        echo "Expected per-contig VCF not found: ${CHR_VCF}" >&2
+        echo "[${CHR}] Expected per-contig VCF not found: ${CHR_VCF}" >&2
         exit 2
     }
 
-    if [ ! -s "${CHR_VCF}" ]; then
-        echo "Per-contig VCF is empty: ${CHR_VCF}" >&2
+    [ -s "${CHR_VCF}" ] || {
+        echo "[${CHR}] Per-contig VCF is empty: ${CHR_VCF}" >&2
         exit 2
-    fi
+    }
 
-    printf '%s\n' "${CHR_VCF}" >> "${VCF_LIST}"
+    echo "${CHR_VCF}"
+}
+
+export BAM REF DATADIR VCFDIR LOGDIR MODEL_CONFIG MODEL_CKPT MIN_BASEQ_FLAG
+export -f process_chr
+
+JOBLOG="${LOGDIR}/parallel_jobs.log"
+: > "${JOBLOG}"
+
+pids=()
+tmp_vcf_lists=()
+
+for CHR in "${CHRS[@]}"; do
+    tmp_vcf_list_chr="${TMPDIR}/${CHR}.vcf.path.txt"
+    tmp_vcf_lists+=("${tmp_vcf_list_chr}")
+
+    (
+        process_chr "${CHR}" > "${tmp_vcf_list_chr}"
+    ) >> "${JOBLOG}" 2>&1 &
+
+    pids+=("$!")
+
+    while [ "$(jobs -rp | wc -l)" -ge "${THREADS}" ]; do
+        sleep 1
+    done
+done
+
+fail=0
+for pid in "${pids[@]}"; do
+    if ! wait "${pid}"; then
+        fail=1
+    fi
+done
+
+[ "${fail}" -eq 0 ] || {
+    echo "At least one chromosome job failed. Check logs in ${LOGDIR}" >&2
+    exit 1
+}
+
+: > "${VCF_LIST}"
+for f in "${tmp_vcf_lists[@]}"; do
+    [ -s "${f}" ] || {
+        echo "Missing chromosome VCF path file: ${f}" >&2
+        exit 2
+    }
+    cat "${f}" >> "${VCF_LIST}"
 done
 
 [ -s "${VCF_LIST}" ] || {
