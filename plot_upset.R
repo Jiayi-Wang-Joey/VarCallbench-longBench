@@ -24,7 +24,8 @@ parse_args <- function(args) {
             res$output_dir <- args[i + 1]
             i <- i + 2
             
-        } else if (key %in% c("--variant.vcf", "--variant_vcf", "--variant-vcf")) {
+        } else if (key %in% c("--filtered.vcf", "--filtered_vcf", "--filtered-vcf",
+                              "--variant.vcf", "--variant_vcf", "--variant-vcf")) {
             i <- i + 1
             vals <- character()
             
@@ -48,6 +49,7 @@ extract_dataset <- function(vcf_path) {
     x <- basename(vcf_path)
     x <- sub("\\.vcf\\.gz$", "", x)
     x <- sub("\\.vcf$", "", x)
+    x <- sub("\\.filtered$", "", x)
     x
 }
 
@@ -94,11 +96,6 @@ clean_caller_name <- function(x) {
 
 read_vcf_ids <- function(vcf_path) {
     vcf <- VariantAnnotation::readVcf(vcf_path)
-    
-    ## keep only PASS
-    filt <- as.character(VariantAnnotation::fixed(vcf)$FILTER)
-    vcf <- vcf[!is.na(filt) & filt == "PASS"]
-    
     rr <- rowRanges(vcf)
     
     ref_allele <- as.character(VariantAnnotation::ref(vcf))
@@ -116,7 +113,7 @@ read_vcf_ids <- function(vcf_path) {
     )
     
     dt[, variant_id := paste(seqnames, pos, ref, alt, sep = ":")]
-    dt <- dt[!is.na(variant_id) & alt != ""]
+    dt <- dt[!is.na(variant_id) & !is.na(alt) & alt != ""]
     dt <- unique(dt[, .(variant_id)])
     
     dt
@@ -138,12 +135,19 @@ build_incidence <- function(meta_dt) {
     
     long_dt <- unique(long_dt, by = c("dataset", "caller", "variant_id"))
     
-    dcast(
+    incidence_dt <- dcast(
         long_dt,
         dataset + variant_id ~ caller,
         value.var = "caller",
         fun.aggregate = length
     )
+    
+    caller_cols <- setdiff(colnames(incidence_dt), c("dataset", "variant_id"))
+    for (cc in caller_cols) {
+        set(incidence_dt, j = cc, value = as.integer(incidence_dt[[cc]] > 0))
+    }
+    
+    incidence_dt
 }
 
 make_upset_plot <- function(dt_sub, dataset_name) {
@@ -162,9 +166,6 @@ make_upset_plot <- function(dt_sub, dataset_name) {
     }
     
     plot_dt <- copy(dt_sub)[, c("dataset", "variant_id") := NULL]
-    for (cc in caller_cols) {
-        set(plot_dt, j = cc, value = as.integer(plot_dt[[cc]] > 0))
-    }
     
     ComplexUpset::upset(
         plot_dt,
@@ -187,7 +188,7 @@ main <- function() {
     }
     
     if (length(parsed$vcf_files) == 0) {
-        stop("No VCF files found from --variant.vcf")
+        stop("No VCF files found from --filtered.vcf or --variant.vcf")
     }
     
     dir.create(parsed$output_dir, recursive = TRUE, showWarnings = FALSE)
