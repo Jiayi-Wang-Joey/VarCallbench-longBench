@@ -40,7 +40,7 @@ case "$TASK" in
         exec "$DIR/somatic_detection.sh" "$@"
         ;;
     filter_variants)
-        bash "$(dirname "$0")/filter_variants.sh" "$@"
+        exec "$DIR/filter_variants.sh" "$@"
         ;;
     align)
         exec "$DIR/align.sh" "$@"
