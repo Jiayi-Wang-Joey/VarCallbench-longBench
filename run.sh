@@ -49,7 +49,7 @@ case "$TASK" in
         # collector autodetection
         for arg in "$@"; do
             case "$arg" in
-                --variant.vcf|--variant_vcf|--variant-vcf)
+                --filtered.vcf|--filtered_vcf|--filtered-vcf)
                     exec Rscript "$DIR/plot_upset.R" "$@"
                     ;;
             esac
