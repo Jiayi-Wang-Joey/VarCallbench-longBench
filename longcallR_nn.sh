@@ -61,6 +61,10 @@ VCFDIR="${OUTDIR}/vcf"
 LOGDIR="${OUTDIR}/logs"
 mkdir -p "${TMPDIR}" "${DATADIR}" "${VCFDIR}" "${LOGDIR}"
 
+: > "${LOGDIR}/merge.log"
+: > "${LOGDIR}/parallel_jobs.log"
+rm -f "${TMPDIR}"/*.vcf.path.txt "${TMPDIR}/vcf.list" "${TMPDIR}"/*.header.txt 2>/dev/null || true
+
 dataset_lc="$(printf '%s' "${DATASET}" | tr '[:upper:]' '[:lower:]')"
 
 if echo "${dataset_lc}" | grep -q 'pb'; then
@@ -88,6 +92,7 @@ echo "MIN_BASEQ_FLAG=${MIN_BASEQ_FLAG}" >&2
 [ -x /usr/local/bin/longcallR_nn ] || { echo "Missing executable: /usr/local/bin/longcallR_nn" >&2; exit 2; }
 
 FINAL_VCF_GZ="${OUTDIR}/${DATASET}.vcf.gz"
+VCF_LIST="${TMPDIR}/vcf.list"
 
 if ! samtools idxstats "${BAM}" > "${LOGDIR}/samtools_idxstats.initial.txt" 2> "${LOGDIR}/samtools_idxstats.initial.log"; then
     echo "BAM index missing or unusable for: ${BAM}" >&2
@@ -139,20 +144,19 @@ fi
 echo "Detected primary contigs with mapped reads: ${#CHRS[@]}" >&2
 printf '%s\n' "${CHRS[@]}" >&2
 
-VCF_LIST="${TMPDIR}/vcf.list"
-: > "${VCF_LIST}"
-
 process_chr() {
     local CHR="$1"
     local CHR_DATA_DIR="${DATADIR}/${CHR}"
     local CHR_VCF="${VCFDIR}/${CHR}.vcf"
+    local CHR_FIXED_VCF_GZ="${VCFDIR}/${CHR}.fixed.sorted.vcf.gz"
+    local CHR_HEADER="${TMPDIR}/${CHR}.header.txt"
     local DP_LOG="${LOGDIR}/${CHR}.longcallR_dp.log"
     local NN_LOG="${LOGDIR}/${CHR}.longcallR_nn.log"
 
     echo "=== Processing ${CHR} ===" >&2
 
     mkdir -p "${CHR_DATA_DIR}"
-    rm -f "${CHR_VCF}"
+    rm -f "${CHR_VCF}" "${CHR_FIXED_VCF_GZ}" "${CHR_FIXED_VCF_GZ}.tbi" "${CHR_HEADER}"
 
     if [ -f "${BAM}.bai" ]; then
         :
@@ -209,15 +213,33 @@ process_chr() {
         exit 2
     }
 
-    echo "${CHR_VCF}"
+    cat > "${CHR_HEADER}" <<EOF
+##FILTER=<ID=PA,Description="Added during post-processing because present in records but missing from longcallR-nn header">
+EOF
+
+    bcftools annotate \
+        -h "${CHR_HEADER}" \
+        "${CHR_VCF}" \
+        2>> "${NN_LOG}" \
+    | bcftools sort -Oz -o "${CHR_FIXED_VCF_GZ}" 2>> "${NN_LOG}" || {
+        echo "[${CHR}] Failed to normalize/sort VCF: ${CHR_VCF}" >&2
+        exit 2
+    }
+
+    tabix -f -p vcf "${CHR_FIXED_VCF_GZ}" 2>> "${NN_LOG}" || {
+        echo "[${CHR}] Failed to index normalized VCF: ${CHR_FIXED_VCF_GZ}" >&2
+        exit 2
+    }
+
+    rm -f "${CHR_VCF}" "${CHR_HEADER}"
+
+    echo "${CHR_FIXED_VCF_GZ}"
 }
 
-export BAM REF DATADIR VCFDIR LOGDIR MODEL_CONFIG MODEL_CKPT MIN_BASEQ_FLAG
+export BAM REF DATADIR VCFDIR LOGDIR MODEL_CONFIG MODEL_CKPT MIN_BASEQ_FLAG TMPDIR
 export -f process_chr
 
 JOBLOG="${LOGDIR}/parallel_jobs.log"
-: > "${JOBLOG}"
-
 pids=()
 tmp_vcf_lists=()
 
@@ -263,12 +285,28 @@ done
 }
 
 echo "=== Merging VCFs ===" >&2
-bcftools concat -f "${VCF_LIST}" 2>> "${LOGDIR}/merge.log" \
-    | bcftools sort -Oz -o "${FINAL_VCF_GZ}" 2>> "${LOGDIR}/merge.log"
+bcftools concat -a -Oz -f "${VCF_LIST}" -o "${FINAL_VCF_GZ}" 2>> "${LOGDIR}/merge.log" || {
+    rc=$?
+    echo "bcftools concat failed with exit code ${rc}" >&2
+    tail -n 50 "${LOGDIR}/merge.log" >&2 || true
+    exit "${rc}"
+}
 
-tabix -f -p vcf "${FINAL_VCF_GZ}" 2>> "${LOGDIR}/merge.log"
+tabix -f -p vcf "${FINAL_VCF_GZ}" 2>> "${LOGDIR}/merge.log" || {
+    rc=$?
+    echo "tabix failed with exit code ${rc}" >&2
+    tail -n 50 "${LOGDIR}/merge.log" >&2 || true
+    exit "${rc}"
+}
 
 [ -f "${FINAL_VCF_GZ}" ] || { echo "Final VCF missing: ${FINAL_VCF_GZ}" >&2; exit 2; }
 [ -f "${FINAL_VCF_GZ}.tbi" ] || { echo "Final VCF index missing: ${FINAL_VCF_GZ}.tbi" >&2; exit 2; }
+
+while read -r vcf; do
+    [ -n "${vcf}" ] || continue
+    rm -f "${vcf}" "${vcf}.tbi"
+done < "${VCF_LIST}"
+
+rm -f "${TMPDIR}"/*.vcf.path.txt "${VCF_LIST}" "${TMPDIR}"/*.header.txt 2>/dev/null || true
 
 echo "Wrote ${FINAL_VCF_GZ}" >&2
