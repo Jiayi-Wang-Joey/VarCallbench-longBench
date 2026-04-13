@@ -37,7 +37,10 @@ case "$TASK" in
         exec "$DIR/gnomad_detection.sh" "$@"
         ;;
     somatic_detection)
-        exec "$DIR/somatic_detection.sh" "$@"
+        exec Rscript "$DIR/somatic_detection.R" "$@"
+        ;;
+    somatic_detection_collector)
+        exec Rscript "$DIR/somatic_detection_collector.R" "$@"
         ;;
     filter_variants)
         exec "$DIR/filter_variants.sh" "$@"
@@ -51,6 +54,9 @@ case "$TASK" in
             case "$arg" in
                 --filtered.vcf|--filtered_vcf|--filtered-vcf)
                     exec Rscript "$DIR/plot_upset.R" "$@"
+                    ;;
+                --somatic_detection.csv|--somatic_detection_csv|--somatic-detection-csv)
+                    exec Rscript "$DIR/somatic_detection_collector.R" "$@"
                     ;;
             esac
         done
