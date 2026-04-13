@@ -39,6 +39,7 @@ case "$TASK" in
     somatic_detection_collector)
         exec Rscript "$DIR/somatic_detection_collector.R" "$@"
         ;;
+    
     filter_variants)
         exec "$DIR/filter_variants.sh" "$@"
         ;;
@@ -54,6 +55,9 @@ case "$TASK" in
                     ;;
                 --somatic_detection.csv|--somatic_detection_csv|--somatic-detection-csv)
                     exec Rscript "$DIR/somatic_detection_collector.R" "$@"
+                    ;;
+                --alignment_qc.csv|--alignment_qc_csv|--alignment-qc-csv)
+                    exec Rscript "$DIR/alignment_qc_collector.R" "$@"
                     ;;
             esac
         done
