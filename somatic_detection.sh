@@ -17,38 +17,14 @@ echo "ARGS: $*" >&2
 ########################################
 while [ $# -gt 0 ]; do
     case "$1" in
-        --task)
-            TASK="$2"
-            shift 2
-            ;;
-        --output_dir)
-            OUTDIR="$2"
-            shift 2
-            ;;
-        --name|--dataset_id)
-            DATASET="$2"
-            shift 2
-            ;;
-        --variant.vcf|--variant_vcf|--variant-vcf)
-            VCF="$2"
-            shift 2
-            ;;
-        --somatic_dir)
-            SOMATIC_DIR="$2"
-            shift 2
-            ;;
-        --exon_bed)
-            EXON_BED="$2"
-            shift 2
-            ;;
-        --threads)
-            THREADS="$2"
-            shift 2
-            ;;
-        *)
-            echo "Unknown argument: $1" >&2
-            exit 1
-            ;;
+        --task) TASK="$2"; shift 2 ;;
+        --output_dir) OUTDIR="$2"; shift 2 ;;
+        --name|--dataset_id) DATASET="$2"; shift 2 ;;
+        --variant.vcf|--variant_vcf|--variant-vcf) VCF="$2"; shift 2 ;;
+        --somatic_dir) SOMATIC_DIR="$2"; shift 2 ;;
+        --exon_bed) EXON_BED="$2"; shift 2 ;;
+        --threads) THREADS="$2"; shift 2 ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
 
@@ -56,7 +32,7 @@ done
 # checks
 ########################################
 [ -n "$OUTDIR" ] || { echo "Missing --output_dir" >&2; exit 1; }
-[ -n "$DATASET" ] || { echo "Missing --name/--dataset_id" >&2; exit 1; }
+[ -n "$DATASET" ] || { echo "Missing --name" >&2; exit 1; }
 [ -n "$VCF" ] || { echo "Missing --variant.vcf" >&2; exit 1; }
 [ -n "$EXON_BED" ] || { echo "Missing --exon_bed" >&2; exit 1; }
 
@@ -71,8 +47,8 @@ fi
 
 [ -f "$SOMATIC_VCF" ] || { echo "Somatic VCF not found: $SOMATIC_VCF" >&2; exit 1; }
 
-command -v bcftools >/dev/null 2>&1 || { echo "bcftools not found" >&2; exit 1; }
-command -v bedtools >/dev/null 2>&1 || { echo "bedtools not found" >&2; exit 1; }
+command -v bcftools >/dev/null || { echo "bcftools not found" >&2; exit 1; }
+command -v bedtools >/dev/null || { echo "bedtools not found" >&2; exit 1; }
 
 ########################################
 # extract caller
@@ -92,12 +68,8 @@ esac
 ########################################
 mkdir -p "$OUTDIR"
 
-echo "TASK: ${TASK:-somatic_detection}" >&2
 echo "DATASET: $DATASET" >&2
 echo "CALLER: $CALLER" >&2
-echo "VCF: $VCF" >&2
-echo "SOMATIC_VCF: $SOMATIC_VCF" >&2
-echo "EXON_BED: $EXON_BED" >&2
 
 ########################################
 # somatic detection
@@ -107,7 +79,6 @@ rm -rf "$TMPDIR"
 mkdir -p "$TMPDIR"
 
 tabix -f "$VCF"
-
 bcftools isec -p "$TMPDIR" "$VCF" "$SOMATIC_VCF"
 
 DETECTED=0
@@ -127,23 +98,56 @@ else
 fi
 
 ########################################
-# exon / intron classification
+# convert VCFs to BED
 ########################################
-VAR_BED="$OUTDIR/variants.bed"
+to_bed() {
+    bcftools view -H "$1" | \
+    awk 'BEGIN{OFS="\t"} {
+        start=$2-1;
+        end=start+length($4);
+        if (end <= start) end=start+1;
+        print $1, start, end
+    }'
+}
 
-bcftools view -H "$VCF" | \
-awk 'BEGIN{OFS="\t"} {
-    start=$2-1;
-    end=start+length($4);
-    if (end <= start) end=start+1;
-    print $1, start, end
-}' > "$VAR_BED"
+########################################
+# truth / detected BED
+########################################
+to_bed "$SOMATIC_VCF" > "$OUTDIR/truth.bed"
 
-bedtools intersect -a "$VAR_BED" -b "$EXON_BED" -u > "$OUTDIR/exonic.bed"
-bedtools intersect -a "$VAR_BED" -b "$EXON_BED" -v > "$OUTDIR/intronic.bed"
+if [ -f "$TMPDIR/0002.vcf" ]; then
+    to_bed "$TMPDIR/0002.vcf" > "$OUTDIR/detected.bed"
+else
+    : > "$OUTDIR/detected.bed"
+fi
 
-EXONIC_CALLS=$(wc -l < "$OUTDIR/exonic.bed" | tr -d ' ')
-INTRONIC_CALLS=$(wc -l < "$OUTDIR/intronic.bed" | tr -d ' ')
+########################################
+# classify truth
+########################################
+bedtools intersect -a "$OUTDIR/truth.bed" -b "$EXON_BED" -u > "$OUTDIR/truth_exonic.bed"
+bedtools intersect -a "$OUTDIR/truth.bed" -b "$EXON_BED" -v > "$OUTDIR/truth_intronic.bed"
+
+TRUTH_EXONIC=$(wc -l < "$OUTDIR/truth_exonic.bed" | tr -d ' ')
+TRUTH_INTRONIC=$(wc -l < "$OUTDIR/truth_intronic.bed" | tr -d ' ')
+
+########################################
+# classify detected
+########################################
+bedtools intersect -a "$OUTDIR/detected.bed" -b "$EXON_BED" -u > "$OUTDIR/detected_exonic.bed"
+bedtools intersect -a "$OUTDIR/detected.bed" -b "$EXON_BED" -v > "$OUTDIR/detected_intronic.bed"
+
+DETECTED_EXONIC=$(wc -l < "$OUTDIR/detected_exonic.bed" | tr -d ' ')
+DETECTED_INTRONIC=$(wc -l < "$OUTDIR/detected_intronic.bed" | tr -d ' ')
+
+########################################
+# compute rates
+########################################
+calc_rate() {
+    awk -v d="$1" -v t="$2" 'BEGIN{if(t>0) printf "%.6f", d/t; else print "NA"}'
+}
+
+EXONIC_RATE=$(calc_rate "$DETECTED_EXONIC" "$TRUTH_EXONIC")
+INTRONIC_RATE=$(calc_rate "$DETECTED_INTRONIC" "$TRUTH_INTRONIC")
 
 ########################################
 # output
@@ -151,18 +155,13 @@ INTRONIC_CALLS=$(wc -l < "$OUTDIR/intronic.bed" | tr -d ' ')
 OUTFILE="$OUTDIR/${DATASET}.somatic_detection.csv"
 
 {
-    echo "dataset,caller,detected,total_truth,missed,detection_rate,unmatched_calls,exonic_calls,intronic_calls"
-    echo "${DATASET},${CALLER},${DETECTED},${TOTAL_TRUTH},${MISSED},${DETECTION_RATE},${UNMATCHED_CALLS},${EXONIC_CALLS},${INTRONIC_CALLS}"
+echo "dataset,caller,detected,total_truth,missed,detection_rate,unmatched_calls,truth_exonic,truth_intronic,detected_exonic,detected_intronic,exonic_detection_rate,intronic_detection_rate"
+echo "${DATASET},${CALLER},${DETECTED},${TOTAL_TRUTH},${MISSED},${DETECTION_RATE},${UNMATCHED_CALLS},${TRUTH_EXONIC},${TRUTH_INTRONIC},${DETECTED_EXONIC},${DETECTED_INTRONIC},${EXONIC_RATE},${INTRONIC_RATE}"
 } > "$OUTFILE"
 
 ########################################
 # logs
 ########################################
-echo "DETECTED: $DETECTED" >&2
-echo "MISSED: $MISSED" >&2
-echo "TOTAL_TRUTH: $TOTAL_TRUTH" >&2
-echo "DETECTION_RATE: $DETECTION_RATE" >&2
-echo "UNMATCHED_CALLS: $UNMATCHED_CALLS" >&2
-echo "EXONIC_CALLS: $EXONIC_CALLS" >&2
-echo "INTRONIC_CALLS: $INTRONIC_CALLS" >&2
+echo "EXONIC_RATE: $EXONIC_RATE" >&2
+echo "INTRONIC_RATE: $INTRONIC_RATE" >&2
 echo "Wrote: $OUTFILE" >&2
