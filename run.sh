@@ -33,11 +33,8 @@ case "$TASK" in
     alignment_qc)
         exec "$DIR/alignment_qc.sh" "$@"
         ;;
-    gnomad_detection)
-        exec "$DIR/gnomad_detection.sh" "$@"
-        ;;
     somatic_detection)
-        exec Rscript "$DIR/somatic_detection.sh" "$@"
+        exec "$DIR/somatic_detection.sh" "$@"
         ;;
     somatic_detection_collector)
         exec Rscript "$DIR/somatic_detection_collector.R" "$@"
