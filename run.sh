@@ -37,7 +37,7 @@ case "$TASK" in
         exec "$DIR/gnomad_detection.sh" "$@"
         ;;
     somatic_detection)
-        exec Rscript "$DIR/somatic_detection.R" "$@"
+        exec Rscript "$DIR/somatic_detection.sh" "$@"
         ;;
     somatic_detection_collector)
         exec Rscript "$DIR/somatic_detection_collector.R" "$@"
