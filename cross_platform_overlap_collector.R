@@ -92,20 +92,31 @@ read_vcf_ids <- function(vcf_file) {
         cmd = cmd,
         sep = "\t",
         header = FALSE,
-        col.names = c("CHROM", "POS", "REF", "ALT")
+        col.names = c("CHROM", "POS", "REF", "ALT"),
+        showProgress = FALSE
     )
+    
+    if (nrow(dt) == 0L) {
+        return(character())
+    }
     
     unique(paste(dt$CHROM, dt$POS, dt$REF, dt$ALT, sep = "_"))
 }
 
-calc_overlap <- function(v_cdna, v_drna, v_pb) {
-    all_ids <- unique(c(v_cdna, v_drna, v_pb))
+calc_overlap_fast <- function(v_cdna, v_drna, v_pb) {
+    cdna_drna <- intersect(v_cdna, v_drna)
+    cdna_pb   <- intersect(v_cdna, v_pb)
+    drna_pb   <- intersect(v_drna, v_pb)
+    shared_all <- Reduce(intersect, list(v_cdna, v_drna, v_pb))
     
-    dt <- data.table(id = all_ids)
-    dt[, cdna := id %in% v_cdna]
-    dt[, drna := id %in% v_drna]
-    dt[, pb := id %in% v_pb]
-    dt[, pattern := paste0(as.integer(cdna), as.integer(drna), as.integer(pb))]
+    n_111 <- length(shared_all)
+    n_110 <- length(cdna_drna) - n_111
+    n_101 <- length(cdna_pb)   - n_111
+    n_011 <- length(drna_pb)   - n_111
+    
+    n_100 <- length(setdiff(v_cdna, union(v_drna, v_pb)))
+    n_010 <- length(setdiff(v_drna, union(v_cdna, v_pb)))
+    n_001 <- length(setdiff(v_pb,   union(v_cdna, v_drna)))
     
     out <- data.table(
         pattern = c("111", "110", "101", "011", "100", "010", "001"),
@@ -117,16 +128,12 @@ calc_overlap <- function(v_cdna, v_drna, v_pb) {
             "unique_cdna",
             "unique_drna",
             "unique_pb"
-        )
+        ),
+        N = c(n_111, n_110, n_101, n_011, n_100, n_010, n_001)
     )
-    
-    counts <- dt[, .N, by = pattern]
-    out <- merge(out, counts, by = "pattern", all.x = TRUE)
-    out[is.na(N), N := 0L]
     
     total_union <- sum(out$N)
     out[, pct_union := if (total_union > 0) N / total_union else NA_real_]
-    
     out
 }
 
@@ -148,11 +155,9 @@ main <- function() {
         stop("Failed to parse tech from some dataset names")
     }
     
-    id_list <- lapply(opt$vcf_files, read_vcf_ids)
-    names(id_list) <- opt$vcf_files
-    
-    res <- list()
     groups <- unique(meta[, .(caller, cell_line)])
+    res <- vector("list", nrow(groups))
+    res_i <- 0L
     
     for (i in seq_len(nrow(groups))) {
         caller_i <- groups$caller[i]
@@ -171,30 +176,30 @@ main <- function() {
         
         f_cdna <- subm[tech == "cDNAxR10", file][1]
         f_drna <- subm[tech == "dRNA004", file][1]
-        f_pb <- subm[tech == "Kinnex", file][1]
+        f_pb   <- subm[tech == "Kinnex", file][1]
         
-        ov <- calc_overlap(
-            v_cdna = id_list[[f_cdna]],
-            v_drna = id_list[[f_drna]],
-            v_pb = id_list[[f_pb]]
-        )
+        v_cdna <- read_vcf_ids(f_cdna)
+        v_drna <- read_vcf_ids(f_drna)
+        v_pb   <- read_vcf_ids(f_pb)
         
+        ov <- calc_overlap_fast(v_cdna, v_drna, v_pb)
         ov[, `:=`(
             caller = caller_i,
             cell_line = cell_i,
-            n_cdna = length(id_list[[f_cdna]]),
-            n_drna = length(id_list[[f_drna]]),
-            n_pb = length(id_list[[f_pb]])
+            n_cdna = length(v_cdna),
+            n_drna = length(v_drna),
+            n_pb = length(v_pb)
         )]
         
-        res[[length(res) + 1]] <- ov
+        res_i <- res_i + 1L
+        res[[res_i]] <- ov
     }
     
-    if (length(res) == 0) {
+    if (res_i == 0L) {
         stop("No valid caller/cell_line groups produced results")
     }
     
-    final_dt <- rbindlist(res, fill = TRUE)
+    final_dt <- rbindlist(res[seq_len(res_i)], fill = TRUE)
     
     out_file <- file.path(opt$output_dir, "cross_platform_overlap.csv")
     fwrite(final_dt, out_file)

@@ -39,8 +39,9 @@ case "$TASK" in
     somatic_detection_collector)
         exec Rscript "$DIR/somatic_detection_collector.R" "$@"
         ;;
-    cross_platform_overlap_collector|metric_collector_cross_platform_overlap_collector)
+    cross_platform_overlap_collector)
         exec Rscript "$DIR/cross_platform_overlap_collector.R" "$@"
+        ;;
         ;;
     filter_variants)
         exec "$DIR/filter_variants.sh" "$@"
