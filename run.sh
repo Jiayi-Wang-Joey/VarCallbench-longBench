@@ -42,7 +42,6 @@ case "$TASK" in
     cross_platform_overlap_collector)
         exec Rscript "$DIR/cross_platform_overlap_collector.R" "$@"
         ;;
-        ;;
     filter_variants)
         exec "$DIR/filter_variants.sh" "$@"
         ;;
