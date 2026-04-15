@@ -27,11 +27,20 @@ case "$TASK" in
     longcallR_nn)
         exec "$DIR/longcallR_nn.sh" "$@"
         ;;
+    align)
+        exec "$DIR/align.sh" "$@"
+        ;;
+    filter_variants)
+        exec "$DIR/filter_variants.sh" "$@"
+        ;;
     plot_upset)
         exec Rscript "$DIR/plot_upset.R" "$@"
         ;;
     alignment_qc)
         exec "$DIR/alignment_qc.sh" "$@"
+        ;;
+    alignment_qc_collector)
+        exec Rscript "$DIR/alignment_qc_collector.R" "$@"
         ;;
     somatic_detection)
         exec "$DIR/somatic_detection.sh" "$@"
@@ -42,14 +51,8 @@ case "$TASK" in
     cross_platform_overlap_collector)
         exec Rscript "$DIR/cross_platform_overlap_collector.R" "$@"
         ;;
-    filter_variants)
-        exec "$DIR/filter_variants.sh" "$@"
-        ;;
-    align)
-        exec "$DIR/align.sh" "$@"
-        ;;
     "")
-        # collector autodetection
+        # collector autodetection only when --task is absent
         for arg in "$@"; do
             case "$arg" in
                 --filtered.vcf|--filtered_vcf|--filtered-vcf)
@@ -60,6 +63,9 @@ case "$TASK" in
                     ;;
                 --alignment_qc.csv|--alignment_qc_csv|--alignment-qc-csv)
                     exec Rscript "$DIR/alignment_qc_collector.R" "$@"
+                    ;;
+                --cross_platform_overlap.csv|--cross_platform_overlap_csv|--cross-platform-overlap-csv)
+                    exec Rscript "$DIR/cross_platform_overlap_collector.R" "$@"
                     ;;
             esac
         done
