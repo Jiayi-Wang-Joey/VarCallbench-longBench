@@ -48,6 +48,12 @@ case "$TASK" in
     somatic_detection_collector)
         exec Rscript "$DIR/somatic_detection_collector.R" "$@"
         ;;
+    isolaser_annotate)
+        exec "$DIR/isolaser_annotate.sh" "$@"
+        ;;
+    isolaser_run)
+        exec "$DIR/isolaser_run.sh" "$@"
+        ;;
     cross_platform_overlap_collector)
         exec Rscript "$DIR/cross_platform_overlap_collector.R" "$@"
         ;;
