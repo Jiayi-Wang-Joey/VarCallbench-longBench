@@ -60,10 +60,12 @@ isolaser \
     --platform="$PLATFORM" \
     > "$OUTDIR/isolaser.log" 2>&1
 
-bcftools sort \
-    -T "$OUTDIR/tmp.sort" \
-    -Oz \
-    -o "$OUTDIR/${DATASET}.vcf.gz" \
-    "$OUTDIR/calls/${DATASET}.vcf"
+# Convert gVCF to VCF: remove reference-only blocks, trim residual <NON_REF> alleles
+bcftools view -e 'ALT="<NON_REF>"' "$OUTDIR/calls/${DATASET}.gvcf" \
+    | bcftools norm --trim-alt-alleles -Ov \
+    | bcftools sort \
+        -T "$OUTDIR/tmp.sort" \
+        -Oz \
+        -o "$OUTDIR/${DATASET}.vcf.gz"
 
 tabix -f -p vcf "$OUTDIR/${DATASET}.vcf.gz"
