@@ -51,15 +51,27 @@ command -v bcftools >/dev/null || { echo "bcftools not found" >&2; exit 1; }
 command -v bedtools >/dev/null || { echo "bedtools not found" >&2; exit 1; }
 
 ########################################
+# skip empty VCFs
+########################################
+if [ "$(bcftools view -H "$VCF" | wc -l)" -eq 0 ]; then
+    echo "VCF has 0 variants, skipping somatic detection for $DATASET" >&2
+    mkdir -p "$OUTDIR"
+    echo "dataset,caller,detected,total_truth,missed,detection_rate,unmatched_calls,truth_exonic,truth_intronic,detected_exonic,detected_intronic,exonic_detection_rate,intronic_detection_rate" \
+        > "$OUTDIR/${DATASET}.somatic_detection.csv"
+    exit 0
+fi
+
+########################################
 # extract caller
 ########################################
-CALLER=$(echo "$VCF" | sed -n 's#.*/variant_call/\([^/]*\)/.*#\1#p')
+CALLER=$(echo "$VCF" | sed -En 's#.*(variant_call|isolaser_call)/([^/]+)/.*#\2#p')
 
 case "$CALLER" in
     clair3_rna) CALLER="Clair3-RNA" ;;
     deep_variant) CALLER="DeepVariant" ;;
     longcallR) CALLER="longcallR" ;;
     longcallR_nn) CALLER="longcallR-nn" ;;
+    isolaser) CALLER="isoLASER" ;;
     *) CALLER="unknown" ;;
 esac
 

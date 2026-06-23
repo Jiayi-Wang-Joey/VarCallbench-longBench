@@ -52,7 +52,10 @@ if (is.null(opt$output_dir) || !length(opt$csv_files)) {
 
 dir.create(opt$output_dir, recursive = TRUE, showWarnings = FALSE)
 
-dt_list <- lapply(opt$csv_files, fread)
+existing <- Filter(file.exists, opt$csv_files)
+if (length(existing) == 0) stop("No somatic detection CSV files found")
+dt_list <- Filter(function(d) nrow(d) > 0, lapply(existing, fread))
+if (length(dt_list) == 0) stop("All somatic detection CSV files are empty")
 dt <- rbindlist(dt_list, fill = TRUE)
 
 fwrite(dt, file.path(opt$output_dir, "somatic_detection_merged.csv"))

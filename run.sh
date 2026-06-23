@@ -57,6 +57,9 @@ case "$TASK" in
     cross_platform_overlap_collector)
         exec Rscript "$DIR/cross_platform_overlap_collector.R" "$@"
         ;;
+    cross_platform_summary_collector)
+        exec Rscript "$DIR/cross_platform_summary_collector.R" "$@"
+        ;;
     "")
         # collector autodetection only when --task is absent
         for arg in "$@"; do

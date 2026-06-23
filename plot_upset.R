@@ -56,18 +56,18 @@ extract_dataset <- function(vcf_path) {
 extract_caller <- function(vcf_path) {
     p <- normalizePath(vcf_path, mustWork = FALSE)
     
-    m <- regexpr("variant_call/([^/]+)/", p, perl = TRUE)
+    m <- regexpr("(?:variant_call|isolaser_call)/([^/]+)/", p, perl = TRUE)
     if (m[1] != -1) {
         hit <- regmatches(p, m)
-        caller <- sub("^variant_call/", "", hit)
+        caller <- sub("^(?:variant_call|isolaser_call)/", "", hit, perl = TRUE)
         caller <- sub("/$", "", caller)
         return(caller)
     }
-    
+
     parts <- strsplit(p, "/", fixed = TRUE)[[1]]
-    
+
     known <- c("clair3_rna", "deep_variant", "longcallR", "longcallR_nn",
-               "clair3-rna", "deepvariant", "longcallR-nn")
+               "clair3-rna", "deepvariant", "longcallR-nn", "isolaser")
     hit <- parts[parts %in% known]
     if (length(hit) > 0) {
         return(hit[1])
@@ -88,7 +88,8 @@ clean_caller_name <- function(x) {
         "longcallR_nn" = "longcallR-nn",
         "clair3-rna"   = "Clair3-RNA",
         "deepvariant"  = "DeepVariant",
-        "longcallR-nn" = "longcallR-nn"
+        "longcallR-nn" = "longcallR-nn",
+        "isolaser"     = "isoLASER"
     )
     
     ifelse(x %in% names(map), unname(map[x]), x)
@@ -202,6 +203,12 @@ main <- function() {
         caller := clean_caller_name(caller_raw)
     ]
     
+    meta_dt <- meta_dt[vapply(meta_dt$vcf, function(f) {
+        tryCatch(nrow(VariantAnnotation::readVcf(f)) > 0, error = function(e) FALSE)
+    }, logical(1))]
+
+    if (nrow(meta_dt) == 0) stop("No VCF files with variants found")
+
     incidence_dt <- build_incidence(meta_dt)
     
     datasets <- unique(incidence_dt$dataset)
