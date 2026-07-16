@@ -19,7 +19,8 @@ parse_args <- function(argv) {
             i <- i + 2
         } else if (key %in% c(
             "--filtered.vcf", "--filtered_vcf", "--filtered-vcf",
-            "--variant.vcf",  "--variant_vcf",  "--variant-vcf"
+            "--variant.vcf",  "--variant_vcf",  "--variant-vcf",
+            "--isolaser_filtered.vcf", "--isolaser_filtered_vcf", "--isolaser-filtered-vcf"
         )) {
             i <- i + 1
             vals <- character()
@@ -39,7 +40,11 @@ extract_meta <- function(path) {
     dataset <- sub("\\.vcf(\\.gz)?$", "", bn)
 
     caller <- sub(".*/variant_call/([^/]+)/.*", "\\1", path)
-    if (identical(caller, path)) caller <- NA_character_
+    if (identical(caller, path)) {
+        # isolaser path: .../isolaser_call/isolaser/.../
+        caller <- sub(".*/isolaser_call/([^/]+)/.*", "\\1", path)
+        if (identical(caller, path)) caller <- NA_character_
+    }
 
     tech <- fcase(
         grepl("bulk_ONT", dataset), "cDNA",

@@ -50,15 +50,26 @@ fi
 
 mkdir -p "$OUTDIR/calls"
 
-isolaser \
-    -b "$BAM" \
-    -o "$OUTDIR/calls/${DATASET}" \
-    -t "$TX_DB" \
-    -f "$REF" \
-    -n "$THREADS" \
-    --DP=0 \
-    --platform="$PLATFORM" \
-    > "$OUTDIR/isolaser.log" 2>&1
+# Use forkserver multiprocessing start method to avoid fork() deadlocks
+# inside Apptainer containers on newer Linux kernels (e.g. Roland).
+python3 - "$BAM" "$OUTDIR/calls/${DATASET}" "$TX_DB" "$REF" "$THREADS" "$PLATFORM" \
+    > "$OUTDIR/isolaser.log" 2>&1 << 'PYEOF'
+import multiprocessing
+multiprocessing.set_start_method('forkserver', force=True)
+import sys
+sys.argv = [
+    'isolaser',
+    '-b', sys.argv[1],
+    '-o', sys.argv[2],
+    '-t', sys.argv[3],
+    '-f', sys.argv[4],
+    '-n', sys.argv[5],
+    '--DP=0',
+    f'--platform={sys.argv[6]}',
+]
+from isolaser.isolaser import main
+main()
+PYEOF
 
 # Convert gVCF to VCF: remove reference-only blocks, trim residual <NON_REF> alleles
 bcftools view -e 'ALT="<NON_REF>"' "$OUTDIR/calls/${DATASET}.gvcf" \
