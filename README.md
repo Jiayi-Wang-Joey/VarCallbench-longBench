@@ -11,4 +11,3 @@ Each stage in `benchmark.yaml` (in VarCallbench) dispatches into this repo via `
 - `gatk/` — GATK-based WGS ground truth generation (MarkDuplicates, BQSR, HaplotypeCaller, etc.)
 - `eval/` — evaluation and metric collection (hap.py, coverage BED generation)
 - `data/` — raw data download scripts (WGS, rawdata)
-- `arch/` — archived/unused scripts
