@@ -16,77 +16,80 @@ done
 
 case "$TASK" in
     clair3_rna)
-        exec "$DIR/clair3_rna.sh" "$@"
+        exec "$DIR/variant_call/clair3_rna.sh" "$@"
         ;;
     deep_variant|deepvariant)
-        exec "$DIR/deep_variant.sh" "$@"
+        exec "$DIR/variant_call/deep_variant.sh" "$@"
         ;;
     longcallR)
-        exec "$DIR/longcallR.sh" "$@"
+        exec "$DIR/variant_call/longcallR.sh" "$@"
         ;;
     longcallR_nn)
-        exec "$DIR/longcallR_nn.sh" "$@"
+        exec "$DIR/variant_call/longcallR_nn.sh" "$@"
         ;;
     align)
-        exec "$DIR/align.sh" "$@"
+        exec "$DIR/align/align.sh" "$@"
         ;;
-    filter_variants)
-        exec "$DIR/filter_variants.sh" "$@"
-        ;;
-    plot_upset)
-        exec Rscript "$DIR/plot_upset.R" "$@"
+    wgs_align)
+        exec "$DIR/align/wgs_align.sh" "$@"
         ;;
     alignment_qc)
-        exec "$DIR/alignment_qc.sh" "$@"
-        ;;
-    alignment_qc_collector)
-        exec Rscript "$DIR/alignment_qc_collector.R" "$@"
-        ;;
-    somatic_detection)
-        exec "$DIR/somatic_detection.sh" "$@"
-        ;;
-    somatic_detection_collector)
-        exec Rscript "$DIR/somatic_detection_collector.R" "$@"
+        exec "$DIR/align/alignment_qc.sh" "$@"
         ;;
     isolaser_annotate)
-        exec "$DIR/isolaser_annotate.sh" "$@"
+        exec "$DIR/variant_call/isolaser_annotate.sh" "$@"
         ;;
     isolaser_run)
-        exec "$DIR/isolaser_run.sh" "$@"
+        exec "$DIR/variant_call/isolaser_run.sh" "$@"
         ;;
-    cross_platform_overlap_collector)
-        exec Rscript "$DIR/cross_platform_overlap_collector.R" "$@"
+    isolaser_filter)
+        exec "$DIR/variant_call/isolaser_filter.sh" "$@"
         ;;
-    cross_platform_summary_collector)
-        exec Rscript "$DIR/cross_platform_summary_collector.R" "$@"
+    wgs_markdup)
+        exec "$DIR/gatk/markdup.sh" "$@"
+        ;;
+    wgs_bqsr)
+        exec "$DIR/gatk/bqsr.sh" "$@"
+        ;;
+    wgs_haplotypecaller)
+        exec "$DIR/gatk/haplotypecaller.sh" "$@"
+        ;;
+    wgs_genotypegvcfs)
+        exec "$DIR/gatk/genotypegvcfs.sh" "$@"
+        ;;
+    wgs_hard_filter)
+        exec "$DIR/gatk/hard_filter.sh" "$@"
+        ;;
+    wgs_truth_promote)
+        exec "$DIR/gatk/wgs_truth_promote.sh" "$@"
+        ;;
+    bam_index)
+        exec "$DIR/eval/bam_index.sh" "$@"
+        ;;
+    mosdepth_coverage)
+        exec "$DIR/eval/mosdepth_coverage.sh" "$@"
+        ;;
+    generate_bed)
+        exec "$DIR/eval/generate_bed.sh" "$@"
+        ;;
+    happy_benchmark)
+        exec "$DIR/eval/happy_benchmark.sh" "$@"
+        ;;
+    happy_summary_collector)
+        exec "$DIR/eval/happy_summary_collector.R" "$@"
         ;;
     "")
-        # collector autodetection only when --task is absent
-        for arg in "$@"; do
-            case "$arg" in
-                --filtered.vcf|--filtered_vcf|--filtered-vcf)
-                    exec Rscript "$DIR/plot_upset.R" "$@"
-                    ;;
-                --somatic_detection.csv|--somatic_detection_csv|--somatic-detection-csv)
-                    exec Rscript "$DIR/somatic_detection_collector.R" "$@"
-                    ;;
-                --alignment_qc.csv|--alignment_qc_csv|--alignment-qc-csv)
-                    exec Rscript "$DIR/alignment_qc_collector.R" "$@"
-                    ;;
-                --cross_platform_overlap.csv|--cross_platform_overlap_csv|--cross-platform-overlap-csv)
-                    exec Rscript "$DIR/cross_platform_overlap_collector.R" "$@"
-                    ;;
-            esac
-        done
-
         # old-style CLI autodetection
         for arg in "$@"; do
             case "$arg" in
                 --s3_url)
-                    exec "$DIR/download.sh" "$@"
+                    exec "$DIR/data/download.sh" "$@"
                     ;;
                 --reference_genome)
-                    exec "$DIR/align.sh" "$@"
+                    exec "$DIR/align/align.sh" "$@"
+                    ;;
+                --srr)
+                    exec "$DIR/data/wgs_download.sh" "$@"
                     ;;
             esac
         done
@@ -95,7 +98,7 @@ case "$TASK" in
         STDERR_PATH="$(readlink -f /proc/self/fd/2 2>/dev/null || true)"
         case "$STDERR_PATH" in
             *"/out/rawdata/"*)
-                exec "$DIR/download.sh"
+                exec "$DIR/data/download.sh"
                 ;;
         esac
         ;;

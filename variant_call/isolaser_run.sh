@@ -71,12 +71,10 @@ from isolaser.isolaser import main
 main()
 PYEOF
 
-# Convert gVCF to VCF: remove reference-only blocks, trim residual <NON_REF> alleles
-bcftools view -e 'ALT="<NON_REF>"' "$OUTDIR/calls/${DATASET}.gvcf" \
-    | bcftools norm --trim-alt-alleles -Ov \
-    | bcftools sort \
-        -T "$OUTDIR/tmp.sort" \
-        -Oz \
-        -o "$OUTDIR/${DATASET}.vcf.gz"
+# Convert gVCF to VCF: keep SNPs/indels, split multiallelics, drop hom-ref calls.
+# Matches the conversion the isoLASER author reviewed and endorsed.
+bcftools view -v snps,indels "$OUTDIR/calls/${DATASET}.gvcf" \
+    | bcftools norm -m -any \
+    | bcftools view -e 'GT="0/0"' -Oz -o "$OUTDIR/${DATASET}.vcf.gz"
 
 tabix -f -p vcf "$OUTDIR/${DATASET}.vcf.gz"
